@@ -1,0 +1,58 @@
+[
+  {
+    "id": "tecnosolve",
+    "nome": "Tecnosolve",
+    "setor": "Consultoria de Tecnologia B2B",
+    "publico_alvo": "CIOs e CTOs do varejo brasileiro",
+    "url_site": "https://www.tecnosolve.com",
+    "descricao": "Consultoria especializada em integração de sistemas e transformação digital para o varejo.",
+    "tom_de_voz": "Técnico-executivo, direto, baseado em dados e fatos reais. Sem floreios.",
+    "estilo_imagem": "A cinematic, highly detailed digital illustration featuring clean, crisp, and precise line art, resembling a high-end modern graphic novel. The aesthetic is elegant futuristic tech-noir. The color palette is strictly dominated by deep midnight blue and bright, glowing electric gold. The lighting features dramatic high-contrast chiaroscuro, with deep shadows and luminous golden data streams. The composition is dynamic, structural, and sophisticated, with a polished, professional tech-retail finish.",
+    "identidade_visual": {
+      "primarias": [
+        {
+          "hex": "#131b71",
+          "rgb": "19, 27, 113"
+        },
+        {
+          "hex": "#02b0c6",
+          "rgb": "2, 176, 198"
+        },
+        {
+          "hex": "#ff401a",
+          "rgb": "255, 64, 26"
+        }
+      ],
+      "secundarias": [
+        {
+          "hex": "#ffffff",
+          "rgb": "255, 255, 255"
+        },
+        {
+          "hex": "#ececec",
+          "rgb": "236, 236, 236"
+        },
+        {
+          "hex": "#3c3c3b",
+          "rgb": "60, 60, 59"
+        },
+        {
+          "hex": "#282f7d",
+          "rgb": "40, 47, 125"
+        },
+        {
+          "hex": "#87e6fb",
+          "rgb": "135, 230, 251"
+        },
+        {
+          "hex": "#ff8168",
+          "rgb": "255, 129, 104"
+        }
+      ],
+      "fontes": [
+        "Archivo Black 70pt",
+        "Lato Bold 38pt"
+      ]
+    }
+  }
+]

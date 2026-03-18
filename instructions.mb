@@ -1,0 +1,48 @@
+# Contexto do Projeto: Gerador de Vídeos Automatizado (Canal 2B)
+
+## Visão Geral
+Eu sou um desenvolvedor com forte background em JavaScript/Node.js, mas estou iniciando este projeto em **Python**. O objetivo é criar uma esteira de produção de conteúdo 100% automatizada (vídeos curtos, posts de blog, LinkedIn e carrosséis) rodando via chamadas de API. 
+
+## Estado Atual
+Acabei de abrir o VS Code em uma pasta vazia. Não fiz nenhuma configuração de ambiente ainda.
+
+## Sua Missão Principal
+Atue como um Desenvolvedor Python Sênior. Você será meu guia para montar a infraestrutura do zero, traduzindo conceitos do Python para o ecossistema JS/Node sempre que possível para facilitar meu entendimento.
+
+Por favor, execute as etapas abaixo sequencialmente, parando para eu confirmar que cada uma deu certo antes de avançar:
+
+### Fase 0: Setup do Ambiente (Aja como meu co-piloto)
+1. **Verificação:** Me dê o comando exato para eu rodar no terminal e verificar se o Python está instalado e na versão correta.
+2. **Ambiente Virtual (O "node_modules" do Python):** Me ensine a criar e ativar o ambiente virtual (`venv`) na minha máquina (pergunte qual meu sistema operacional se precisar).
+3. **Estrutura de Arquivos:** Crie (ou me dê os comandos para criar) a seguinte estrutura de pastas e arquivos:
+   /
+   ├── .env
+   ├── orquestrador.py
+   ├── outputs/
+   └── modulos/
+       ├── __init__.py
+       ├── llm_brain.py
+       ├── voz.py
+       ├── midia.py
+       └── editor.py
+4. **Dependências:** Me indique como instalar as bibliotecas iniciais (`python-dotenv` e `requests`) usando o `pip`.
+
+### Fase 1: O Cérebro (Após a Fase 0 estar pronta)
+Assim que eu confirmar que o ambiente está rodando, implemente a "Etapa 1" do nosso fluxo:
+1. **Configurar o LLM:** Escreva o código dentro de `modulos/llm_brain.py` para se conectar a uma API de LLM (sugira a biblioteca ideal, como `google-genai` ou `openai`, e me peça para instalá-la).
+2. **O System Prompt:** Crie um prompt de sistema rigoroso que receba um "tema" e obrigue o LLM a devolver **exatamente** um JSON estruturado (sem blocos de formatação Markdown na string de retorno).
+3. **O Contrato JSON:** A resposta do LLM deve seguir estritamente este formato:
+   ```json
+   {
+     "tema_video": "...",
+     "roteiro_audio": "Narração dinâmica para o vídeo curto...",
+     "takes_visuais": [
+       {
+         "ordem": 1,
+         "prompt_geracao": "Prompt em inglês para gerar vídeo via IA, alta qualidade",
+         "duracao_estimada_segundos": 4
+       }
+     ],
+     "post_linkedin": "Texto envolvente para o LinkedIn...",
+     "prompts_carrossel": ["Prompt imagem slide 1", "Prompt imagem slide 2"]
+   }

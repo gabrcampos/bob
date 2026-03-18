@@ -1,0 +1,7 @@
+python-dotenv
+requests
+google-genai
+streamlit
+pypdf
+python-docx
+Pillow
