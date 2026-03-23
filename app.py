@@ -1,4 +1,6 @@
+import io
 import json
+import zipfile
 from pathlib import Path
 from datetime import datetime
 
@@ -563,32 +565,66 @@ with aba_conteudos:
 
                             # ── Imagens ──────────────────────────────
                             imagens = gerador_imagens.listar_imagens(emp["id"], path.stem)
+                            iv = {
+                                **emp.get("identidade_visual", {}),
+                                "estilo_imagem": emp.get("estilo_imagem", ""),
+                            }
 
                             if imagens:
-                                col_cap, col_regen = st.columns([4, 1])
+                                col_cap, col_baixar, col_regen = st.columns([3, 1, 1])
                                 col_cap.caption(f"{len(imagens)} imagem(ns) gerada(s)")
-                                regenerar = col_regen.button("Regenerar", key=f"regen_img_{path.stem}")
+                                regenerar_tudo = col_regen.button("Regenerar tudo", key=f"regen_img_{path.stem}")
+
+                                zip_buf = io.BytesIO()
+                                with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                                    for idx, img_path in enumerate(imagens):
+                                        zf.write(img_path, arcname=f"{idx + 1}.png")
+                                zip_buf.seek(0)
+                                col_baixar.download_button(
+                                    label="↓ Baixar tudo",
+                                    data=zip_buf,
+                                    file_name=f"{path.stem}.zip",
+                                    mime="application/zip",
+                                    key=f"dl_zip_{path.stem}",
+                                    use_container_width=True,
+                                )
                                 cols = st.columns(3)
                                 for idx, img_path in enumerate(imagens):
+                                    slide_n = idx + 1
                                     with cols[idx % 3]:
                                         st.image(str(img_path), use_container_width=True)
+                                        col_dl, col_rs = st.columns(2)
                                         with open(img_path, "rb") as img_f:
-                                            st.download_button(
-                                                label=f"↓ Slide {idx+1}",
-                                                data=img_f,
+                                            col_dl.download_button(
+                                                label="↓ Baixar",
+                                                data=img_f.read(),
                                                 file_name=img_path.name,
                                                 mime="image/png",
                                                 key=f"dl_{path.stem}_{idx}",
+                                                use_container_width=True,
                                             )
+                                        if col_rs.button("↺ Slide", key=f"regen_slide_{path.stem}_{idx}", use_container_width=True):
+                                            slide_data = next(
+                                                (s for s in dados.get("slides", []) if s.get("slide") == slide_n),
+                                                None,
+                                            )
+                                            if slide_data:
+                                                with st.spinner(f"Regenerando slide {slide_n}..."):
+                                                    try:
+                                                        gerador_imagens.gerar_imagem_slide(
+                                                            slide=slide_data,
+                                                            empresa_id=emp["id"],
+                                                            stem=path.stem,
+                                                            identidade_visual=iv,
+                                                        )
+                                                        st.rerun()
+                                                    except Exception as e:
+                                                        st.error(f"Erro: {e}")
                             else:
-                                regenerar = False
+                                regenerar_tudo = False
 
-                            if not imagens or regenerar:
-                                iv = {
-                                    **emp.get("identidade_visual", {}),
-                                    "estilo_imagem": emp.get("estilo_imagem", ""),
-                                }
-                                if regenerar or st.button("Gerar Imagens", key=f"gen_img_{path.stem}", type="primary"):
+                            if not imagens or regenerar_tudo:
+                                if regenerar_tudo or st.button("Gerar Imagens", key=f"gen_img_{path.stem}", type="primary"):
                                     slides = dados.get("slides", [])
                                     barra  = st.progress(0, text="Iniciando...")
                                     status = st.empty()

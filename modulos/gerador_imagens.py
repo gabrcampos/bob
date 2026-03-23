@@ -215,39 +215,83 @@ def _gradiente_preto(largura: int, altura: int, alpha_topo: int = 0, alpha_base:
     return camada
 
 
+def _crop_cover(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
+    """Escala e recorta centralmente para cobrir as dimensões alvo sem barras."""
+    src_w, src_h = img.size
+    escala = max(target_w / src_w, target_h / src_h)
+    new_w = round(src_w * escala)
+    new_h = round(src_h * escala)
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - target_w) // 2
+    top  = (new_h - target_h) // 2
+    return img.crop((left, top, left + target_w, top + target_h))
+
+
+def _lh(draw: ImageDraw.ImageDraw, texto: str, font) -> int:
+    """Altura real do glifo: bottom - top do bounding box."""
+    bb = draw.textbbox((0, 0), texto, font=font)
+    return bb[3] - bb[1]
+
+
 def compor_slide(titulo: str, texto: str, fundo_bytes: bytes,
                  nome_fonte: str | None) -> Image.Image:
-    # Fundo IA em tamanho total
+    # Fundo: cover-crop para preencher 1080×1350 sem barras nem distorção
     fundo = Image.open(BytesIO(fundo_bytes)).convert("RGBA")
-    fundo = fundo.resize((SLIDE_W, SLIDE_H))
+    fundo  = _crop_cover(fundo, SLIDE_W, SLIDE_H)
     canvas = fundo.copy()
 
     # Gradiente preto: 0% opacidade no topo → 80% na base
     overlay = _gradiente_preto(SLIDE_W, SLIDE_H, alpha_topo=0, alpha_base=204)
-    canvas = Image.alpha_composite(canvas, overlay).convert("RGB")
+    canvas  = Image.alpha_composite(canvas, overlay).convert("RGB")
 
     draw    = ImageDraw.Draw(canvas)
-    cor_txt = (255, 255, 255)   # texto sempre branco sobre o gradiente escuro
+    cor_txt = (255, 255, 255)
     pad     = 64
-    y       = SLIDE_H - AREA_TEXTO_H + pad
     max_w   = SLIDE_W - pad * 2
+    y_inicio = SLIDE_H - AREA_TEXTO_H + pad   # 874 px
+    y_max    = SLIDE_H - pad                   # 1286 px
+    espaco   = y_max - y_inicio                # 412 px disponíveis
+    SEP_H    = 24                              # espaçamento entre título e corpo
 
-    # Título
-    f_titulo = _carregar_fonte(nome_fonte, 62)
-    for linha in _quebrar_texto(titulo, f_titulo, max_w, draw)[:3]:
+    # Escolhe o maior tamanho de fonte em que título + sep + corpo cabem nos 412 px
+    f_titulo = f_corpo = None
+    linhas_titulo = linhas_corpo = []
+    for tam_t, tam_c in [(62, 34), (54, 30), (46, 26), (38, 22)]:
+        f_t = _carregar_fonte(nome_fonte, tam_t)
+        f_c = _carregar_fonte(nome_fonte, tam_c)
+        lt  = _quebrar_texto(titulo, f_t, max_w, draw)[:3]
+        lc  = _quebrar_texto(texto,  f_c, max_w, draw)[:7]
+        h_t = sum(_lh(draw, l, f_t) + 10 for l in lt)
+        h_c = sum(_lh(draw, l, f_c) + 7  for l in lc)
+        if h_t + SEP_H + h_c <= espaco:
+            f_titulo, f_corpo = f_t, f_c
+            linhas_titulo, linhas_corpo = lt, lc
+            break
+
+    # Fallback: usa menor tamanho mesmo que não caiba tudo
+    if f_titulo is None:
+        f_titulo = _carregar_fonte(nome_fonte, 38)
+        f_corpo  = _carregar_fonte(nome_fonte, 22)
+        linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w, draw)[:3]
+        linhas_corpo  = _quebrar_texto(texto,  f_corpo,  max_w, draw)[:7]
+
+    # Renderiza com hard-clip: para antes de ultrapassar y_max
+    y = y_inicio
+    for linha in linhas_titulo:
+        h = _lh(draw, linha, f_titulo)
+        if y + h > y_max:
+            break
         draw.text((pad, y), linha, font=f_titulo, fill=cor_txt)
-        y += draw.textbbox((0, 0), linha, font=f_titulo)[3] + 10
+        y += h + 10
 
-    # Separador
-    y += 14
-    draw.line([(pad, y), (SLIDE_W - pad, y)], fill=cor_txt, width=2)
-    y += 22
+    y += 24  # espaçamento entre título e corpo (sem linha separadora)
 
-    # Texto do slide
-    f_corpo = _carregar_fonte(nome_fonte, 34)
-    for linha in _quebrar_texto(texto, f_corpo, max_w, draw)[:7]:
+    for linha in linhas_corpo:
+        h = _lh(draw, linha, f_corpo)
+        if y + h > y_max:
+            break
         draw.text((pad, y), linha, font=f_corpo, fill=cor_txt)
-        y += draw.textbbox((0, 0), linha, font=f_corpo)[3] + 7
+        y += h + 7
 
     return canvas
 
@@ -293,6 +337,28 @@ def gerar_imagens_carrossel(
             callback(i + 1, total)
 
     return paths
+
+
+def gerar_imagem_slide(slide: dict, empresa_id: str, stem: str,
+                       identidade_visual: dict) -> Path:
+    """Regenera a imagem de um único slide, sobrescrevendo o arquivo existente."""
+    pasta = OUTPUTS_DIR / empresa_id / "imagens" / stem
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    cores  = identidade_visual.get("primarias", [])
+    fontes = identidade_visual.get("fontes", [])
+    fonte  = fontes[0] if fontes else None
+    estilo = identidade_visual.get("estilo_imagem", "")
+
+    n    = slide.get("slide", 1)
+    dest = pasta / f"slide_{n:02d}.png"
+
+    prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
+    print(f"[Imagens] Regenerando slide {n}: {slide['titulo']}")
+    fundo  = _gerar_fundo(prompt_imagem, estilo, cores)
+    imagem = compor_slide(slide["titulo"], slide["texto"], fundo, fonte)
+    imagem.save(str(dest), "PNG")
+    return dest
 
 
 def listar_imagens(empresa_id: str, stem: str) -> list[Path]:
