@@ -8,6 +8,7 @@
     "descricao": "Consultoria especializada em integração de sistemas e transformação digital para o varejo.",
     "tom_de_voz": "Técnico-executivo, direto, baseado em dados e fatos reais. Sem floreios.",
     "estilo_imagem": "A cinematic, highly detailed digital illustration featuring clean, crisp, and precise line art, resembling a high-end modern graphic novel. The aesthetic is elegant futuristic tech-noir. The color palette is strictly dominated by deep midnight blue and bright, glowing electric gold. The lighting features dramatic high-contrast chiaroscuro, with deep shadows and luminous golden data streams. The composition is dynamic, structural, and sophisticated, with a polished, professional tech-retail finish.",
+    "drive_folder_id": "14FKahsVyApbmtT5cJ4W7zEDiVbG73Oq3",
     "identidade_visual": {
       "primarias": [
         {
@@ -50,8 +51,8 @@
         }
       ],
       "fontes": [
-        "Archivo Black",
-        "Lato Bold"
+        "Poppins",
+        "Poppins"
       ]
     }
   }

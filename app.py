@@ -1,12 +1,13 @@
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 from datetime import datetime
 
 import streamlit as st
 from dotenv import load_dotenv
-from modulos import llm_brain, gerador_imagens
+from modulos import llm_brain, gerador_imagens, drive
 
 load_dotenv()
 
@@ -220,6 +221,25 @@ def _campos_identidade_visual(prefixo: str, iv: dict):
 st.set_page_config(page_title="Bob — Produção de Conteúdo", layout="wide")
 st.title("Bob · Produção de Conteúdo")
 
+# ── Autenticação Google Drive (sidebar) ──────────────────────────────────────
+with st.sidebar:
+    st.subheader("Google Drive")
+    if drive.esta_autenticado():
+        st.success("Autenticado")
+        if st.button("Revogar acesso", key="drive_revogar"):
+            from pathlib import Path as _P
+            _P("config/drive_token.json").unlink(missing_ok=True)
+            st.rerun()
+    else:
+        st.warning("Não autenticado")
+        if st.button("Autenticar com Google", key="drive_auth"):
+            try:
+                drive.autenticar()
+                st.success("Autenticado com sucesso!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
 aba_gerar, aba_empresas, aba_conteudos = st.tabs(
     ["Gerar Conteúdo", "Empresas", "Conteúdos"]
 )
@@ -341,6 +361,12 @@ with aba_empresas:
                     tom        = st.text_area("Tom de voz", value=emp.get("tom_de_voz", ""), height=80)
                     estilo_img = st.text_area("Estilo das imagens IA", value=emp.get("estilo_imagem", ""), height=100,
                                               placeholder="Ex: fotografias corporativas de alta qualidade em ambientes de tecnologia, paleta fria, sem pessoas sorrindo de banco de imagens...")
+                    drive_folder_id = st.text_input(
+                        "ID da pasta Google Drive",
+                        value=emp.get("drive_folder_id", ""),
+                        placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+                        help="Abra a pasta no Drive e copie o ID da URL: drive.google.com/drive/folders/[ID AQUI]",
+                    )
 
                     st.divider()
                     prim_vals, sec_vals, fontes_vals = _campos_identidade_visual(f"edit_{i}", iv)
@@ -359,6 +385,7 @@ with aba_empresas:
                         "descricao": descricao,
                         "tom_de_voz": tom,
                         "estilo_imagem": estilo_img.strip(),
+                        "drive_folder_id": drive_folder_id.strip(),
                         "identidade_visual": {
                             "primarias":   _construir_cores(prim_vals),
                             "secundarias": _construir_cores(sec_vals),
@@ -373,6 +400,36 @@ with aba_empresas:
                     empresas.pop(i)
                     salvar_empresas(empresas)
                     st.success("Empresa removida.")
+                    st.rerun()
+
+                # ── Logo da empresa ───────────────────────────
+                st.divider()
+                st.markdown("**Logo da empresa**")
+                logo_path = gerador_imagens.logo_empresa(emp["id"])
+                if logo_path:
+                    col_logo, col_del_logo = st.columns([3, 1])
+                    col_logo.image(str(logo_path), width=200)
+                    if col_del_logo.button("Remover logo", key=f"del_logo_{emp['id']}"):
+                        logo_path.unlink()
+                        st.success("Logo removida.")
+                        st.rerun()
+                logo_upload = st.file_uploader(
+                    "Enviar logo (PNG, JPG ou WEBP)",
+                    type=["png", "jpg", "jpeg", "webp"],
+                    key=f"logo_upload_{emp['id']}",
+                    label_visibility="collapsed",
+                )
+                if logo_upload:
+                    from pathlib import Path as _Path
+                    logos_dir = _Path("config/logos")
+                    logos_dir.mkdir(parents=True, exist_ok=True)
+                    # Remove versão anterior em qualquer formato
+                    for old in logos_dir.glob(f"{emp['id']}.*"):
+                        old.unlink()
+                    ext  = logo_upload.name.rsplit(".", 1)[-1].lower()
+                    dest = logos_dir / f"{emp['id']}.{ext}"
+                    dest.write_bytes(logo_upload.getvalue())
+                    st.success("Logo salva!")
                     st.rerun()
 
                 # ── Contexto editorial compilado ──────────────
@@ -466,6 +523,11 @@ with aba_empresas:
             "Estilo das imagens IA", height=100, key="nova_estilo_img",
             placeholder="Ex: fotografias corporativas de alta qualidade em ambientes de tecnologia, paleta fria, sem pessoas sorrindo de banco de imagens...",
         )
+        drive_folder_id_nova = st.text_input(
+            "ID da pasta Google Drive", key="nova_drive_folder",
+            placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms",
+            help="Abra a pasta no Drive e copie o ID da URL: drive.google.com/drive/folders/[ID AQUI]",
+        )
 
         st.divider()
         prim_vals, sec_vals, fontes_vals = _campos_identidade_visual("nova", {})
@@ -485,6 +547,7 @@ with aba_empresas:
                 "descricao": descricao.strip(),
                 "tom_de_voz": tom.strip(),
                 "estilo_imagem": estilo_img_nova.strip(),
+                "drive_folder_id": drive_folder_id_nova.strip(),
                 "identidade_visual": {
                     "primarias":   _construir_cores(prim_vals),
                     "secundarias": _construir_cores(sec_vals),
@@ -536,7 +599,7 @@ with aba_conteudos:
                         st.success("Conteúdo excluído.")
                         st.rerun()
 
-                def _listar_md(tipo: str, altura: int, prefixo: str):
+                def _listar_md(tipo: str, altura: int, prefixo: str, fn_regenerar=None):
                     arquivos = listar_conteudos(emp["id"], tipo)
                     if not arquivos:
                         st.caption("Nenhum conteúdo gerado ainda.")
@@ -548,7 +611,19 @@ with aba_conteudos:
                         tema_arq = linhas[0].lstrip("# ") if linhas else path.stem
                         corpo    = "\n".join(linhas[2:]) if len(linhas) > 2 else texto
                         with st.expander(f"{tema_arq}  ·  {data}"):
-                            _botao_excluir(emp["id"], path.stem, tipo)
+                            btn_cols = st.columns([1, 1, 5]) if fn_regenerar else st.columns([1, 6])
+                            if btn_cols[0].button("Excluir", key=f"del_{tipo}_{emp['id']}_{path.stem}", type="secondary"):
+                                excluir_conteudo(emp["id"], path.stem)
+                                st.success("Conteúdo excluído.")
+                                st.rerun()
+                            if fn_regenerar and btn_cols[1].button("↺ Regenerar", key=f"regen_{tipo}_{path.stem}"):
+                                with st.spinner("Regenerando..."):
+                                    try:
+                                        novo = fn_regenerar(tema_arq)
+                                        path.write_text(f"# {tema_arq}\n\n{novo}", encoding="utf-8")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
                             st.text_area(" ", corpo, height=altura, key=f"{prefixo}_{path.stem}", label_visibility="collapsed")
 
                 with sub_carrossel:
@@ -561,19 +636,51 @@ with aba_conteudos:
                             dados = json.load(f)
                         tema_arq = dados.get("tema", path.stem)
                         with st.expander(f"{tema_arq}  ·  {data}"):
-                            _botao_excluir(emp["id"], path.stem, "carrossel")
+                            col_del, col_regen_texto, _esp = st.columns([1, 2, 3])
+                            if col_del.button("Excluir", key=f"del_carrossel_{emp['id']}_{path.stem}", type="secondary"):
+                                excluir_conteudo(emp["id"], path.stem)
+                                st.success("Conteúdo excluído.")
+                                st.rerun()
+                            if col_regen_texto.button("↺ Regenerar texto", key=f"regen_slides_{path.stem}", use_container_width=True):
+                                with st.spinner("Regenerando carrossel..."):
+                                    try:
+                                        novos_slides = llm_brain.gerar_slides_carrossel(
+                                            tema=dados.get("tema", ""),
+                                            empresa=dados.get("empresa", emp["nome"]),
+                                            empresa_id=emp["id"],
+                                            publico_alvo=dados.get("publico_alvo", emp["publico_alvo"]),
+                                            url_site=emp.get("url_site", ""),
+                                        )
+                                        dados["slides"] = novos_slides
+                                        with open(path, "w", encoding="utf-8") as _f:
+                                            json.dump(dados, _f, ensure_ascii=False, indent=2)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
 
                             # ── Imagens ──────────────────────────────
                             imagens = gerador_imagens.listar_imagens(emp["id"], path.stem)
                             iv = {
                                 **emp.get("identidade_visual", {}),
                                 "estilo_imagem": emp.get("estilo_imagem", ""),
+                                "url_site": emp.get("url_site", ""),
                             }
 
                             if imagens:
-                                col_cap, col_baixar, col_regen = st.columns([3, 1, 1])
+                                col_cap, col_baixar, col_drive, col_regen = st.columns([2, 1, 1, 1])
                                 col_cap.caption(f"{len(imagens)} imagem(ns) gerada(s)")
-                                regenerar_tudo = col_regen.button("Regenerar tudo", key=f"regen_img_{path.stem}")
+                                regenerar_tudo = col_regen.button("↺ Regenerar tudo", key=f"regen_img_{path.stem}", use_container_width=True)
+
+                                folder_id = emp.get("drive_folder_id", "") or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+                                if col_drive.button("📤 Drive", key=f"drive_{path.stem}", use_container_width=True, disabled=not folder_id):
+                                    with st.spinner("Enviando para o Google Drive..."):
+                                        try:
+                                            resultados, nome_pasta = drive.enviar_carrossel_drive(imagens, folder_id)
+                                            st.success(f"{len(resultados)} imagens enviadas para a pasta **{nome_pasta}** no Drive!")
+                                        except Exception as e:
+                                            st.error(f"Erro ao enviar para o Drive: {e}")
+                                if not folder_id:
+                                    col_drive.caption("Configure o ID da pasta na aba Empresas")
 
                                 zip_buf = io.BytesIO()
                                 with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -611,11 +718,13 @@ with aba_conteudos:
                                             if slide_data:
                                                 with st.spinner(f"Regenerando slide {slide_n}..."):
                                                     try:
+                                                        total_slides = len(dados.get("slides", []))
                                                         gerador_imagens.gerar_imagem_slide(
                                                             slide=slide_data,
                                                             empresa_id=emp["id"],
                                                             stem=path.stem,
                                                             identidade_visual=iv,
+                                                            is_ultimo=(slide_n == total_slides),
                                                         )
                                                         st.rerun()
                                                     except Exception as e:
@@ -653,13 +762,24 @@ with aba_conteudos:
                             for slide in dados.get("slides", []):
                                 st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
                                 st.write(slide["texto"])
+                                if slide.get("prompt_imagem"):
+                                    st.caption(f"🖼️ Imagem: {slide['prompt_imagem']}")
                                 st.divider()
 
                 with sub_linkedin:
-                    _listar_md("linkedin", 300, "li")
+                    _listar_md("linkedin", 300, "li",
+                        fn_regenerar=lambda tema: llm_brain.gerar_linkedin(
+                            tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")
+                        ))
 
                 with sub_video:
-                    _listar_md("video", 200, "vid")
+                    _listar_md("video", 200, "vid",
+                        fn_regenerar=lambda tema: llm_brain.gerar_narracao(
+                            tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")
+                        ))
 
                 with sub_blog:
-                    _listar_md("blog", 500, "blog")
+                    _listar_md("blog", 500, "blog",
+                        fn_regenerar=lambda tema: llm_brain.gerar_blog(
+                            tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")
+                        ))

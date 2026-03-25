@@ -11,7 +11,7 @@ from google.genai import types
 CONTEXTOS_DIR = Path("config/contextos")
 
 ESTRUTURA_CARROSSEL = """
-Slide 1 — Contexto Factual: dado ou estatística real e impactante sobre o tema (cite fonte, setor e ano)
+Slide 1 — Gancho: frase de impacto que prende a atenção imediatamente. O TÍTULO deste slide deve ser uma frase curta de no máximo 6 palavras que funcione como gancho do conteúdo. O texto deve apresentar o dado ou estatística mais impactante sobre o tema (cite fonte, setor e ano).
 Slide 2 — O Problema: descrição direta do problema em 1-2 frases, sem rodeios
 Slide 3 — Causa Raiz: por que o problema persiste? A causa real, não o sintoma superficial
 Slide 4 — Impactos: consequências operacionais e financeiras concretas (use números reais)
@@ -61,14 +61,17 @@ Gere 3 peças de conteúdo sobre o tema "{tema}":
 1. CARROSSEL (9 slides obrigatórios):
 {estrutura}
 Cada slide deve ter:
-- "titulo": título curto e impactante (máx 8 palavras)
-- "texto": corpo do slide (2-4 frases densas, sem bullets)
-- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). Descreva APENAS a cena ou composição visual que representa o conceito do slide. PROIBIDO incluir qualquer texto, letras, palavras, números, títulos, legendas ou lettering de qualquer tipo na descrição — apenas elementos visuais puros.
+- "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 6 palavras — gancho direto)
+- "texto": corpo do slide (máx 2 frases curtas e diretas, sem bullets, sem rodeios — vá direto ao dado ou argumento)
+- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real, não conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) PROIBIDO incluir qualquer texto, letras, palavras, números ou lettering — apenas elementos visuais puros.
 
-2. POST LINKEDIN (máx 3.000 caracteres):
-- Primeira linha: fato ou case concreto que para o scroll — dado real ou resultado surpreendente
-- Desenvolvimento: apresente 1-2 cases reais com o raciocínio por trás do resultado
-- Mostre que existem abordagens diferentes para o mesmo problema
+2. POST LINKEDIN (mín 4 parágrafos, máx 3.000 caracteres):
+- Parágrafo 1: fato ou case concreto que para o scroll — dado real ou resultado surpreendente
+- Parágrafo 2: contexto e problema — por que isso acontece, qual é a causa raiz
+- Parágrafo 3: desenvolvimento — apresente 1-2 cases reais com o raciocínio por trás do resultado
+- Parágrafo 4: perspectiva — mostre abordagens diferentes para o mesmo problema ou o que separa quem resolve de quem não resolve
+- Adicione mais parágrafos se necessário para desenvolver bem o raciocínio (até o limite de 3.000 caracteres)
+- Separe os parágrafos com uma linha em branco
 - Sem fechamento promocional, sem convite para contato, sem "fale comigo"
 - Tom direto, sem hashtags em excesso, sem emojis corporativos
 - Sem headers, texto fluido
@@ -309,6 +312,106 @@ def gerar_conteudo(
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
 
     raise RuntimeError("Falha ao gerar conteúdo após 3 tentativas. Tente novamente.")
+
+
+def gerar_slides_carrossel(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    url_site: str = "",
+) -> list[dict]:
+    """Gera apenas os slides do carrossel, descartando linkedin e narração."""
+    conteudo = gerar_conteudo(tema, empresa, empresa_id, publico_alvo, url_site)
+    return conteudo["carrossel"]
+
+
+PROMPT_LINKEDIN_ISOLADO = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
+Produz conteúdo editorial para a {empresa}. Público-alvo: {publico_alvo}.
+Todo conteúdo em português brasileiro.
+{contexto_compilado}
+{padrao_qualidade}
+
+Escreva um post LinkedIn sobre "{tema}":
+- Mín 4 parágrafos separados por linha em branco, máx 3.000 caracteres
+- Parágrafo 1: fato ou case concreto que para o scroll — dado real ou resultado surpreendente
+- Parágrafo 2: contexto e problema — por que isso acontece, qual é a causa raiz
+- Parágrafo 3: desenvolvimento com 1-2 cases reais com o raciocínio por trás do resultado
+- Parágrafo 4+: perspectiva — abordagens diferentes ou o que separa quem resolve de quem não resolve
+- Sem fechamento promocional, sem "fale comigo", sem hashtags em excesso, sem emojis corporativos
+- Sem headers, texto fluido
+
+Responda APENAS com o texto do post, sem JSON, sem markdown extra."""
+
+
+PROMPT_NARRACAO_ISOLADO = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
+Produz conteúdo editorial para a {empresa}. Público-alvo: {publico_alvo}.
+Todo conteúdo em português brasileiro.
+{contexto_compilado}
+{padrao_qualidade}
+
+Escreva uma narração de vídeo de 30-45 segundos (~80-100 palavras) sobre "{tema}":
+- Apenas o texto para leitura em voz alta, sem indicações de cena, corte ou visual
+- Começa com um gancho forte
+- Texto contínuo e fluido
+
+Responda APENAS com o texto da narração, sem JSON, sem markdown."""
+
+
+def _gerar_texto_simples(prompt: str) -> str:
+    """Chama Gemini e retorna texto puro, com fallback sem grounding."""
+    client = _get_client()
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt, config=config
+        )
+    except Exception as e:
+        print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
+    return response.text.strip()
+
+
+def gerar_linkedin(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    url_site: str = "",
+) -> str:
+    bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    prompt = PROMPT_LINKEDIN_ISOLADO.format(
+        empresa=empresa,
+        publico_alvo=publico_alvo,
+        tema=tema,
+        contexto_compilado=bloco_ctx,
+        padrao_qualidade=PADRAO_QUALIDADE,
+    )
+    print(f"[LLM] Gerando LinkedIn para: '{tema}' ({empresa})")
+    return _gerar_texto_simples(prompt)
+
+
+def gerar_narracao(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    url_site: str = "",
+) -> str:
+    bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    prompt = PROMPT_NARRACAO_ISOLADO.format(
+        empresa=empresa,
+        publico_alvo=publico_alvo,
+        tema=tema,
+        contexto_compilado=bloco_ctx,
+        padrao_qualidade=PADRAO_QUALIDADE,
+    )
+    print(f"[LLM] Gerando narração para: '{tema}' ({empresa})")
+    return _gerar_texto_simples(prompt)
 
 
 def gerar_blog(
