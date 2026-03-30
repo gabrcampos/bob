@@ -15,6 +15,31 @@ CONFIG_PATH = Path("config/empresas.json")
 OUTPUTS_DIR = Path("outputs")
 ARQUIVOS_DIR = Path("config/arquivos")
 
+# Opções de estilo por slide (para slides com variante)
+_OPCOES_ESTILO_SLIDE = {
+    2: [
+        ("Gradiente lateral", "A"),
+        ("Blade diagonal",    "A1"),
+        ("Frame",             "A2"),
+        ("Accent bar",        "A3"),
+        ("Padrão",            None),
+    ],
+    5: [
+        ("Overlay colorido",  "B"),
+        ("Duotone",           "B1"),
+        ("Tag + linha",       "B2"),
+        ("Número grande",     "B3"),
+        ("Padrão",            None),
+    ],
+    7: [
+        ("Split reto",        "C"),
+        ("Diagonal",          "C1"),
+        ("Overlap",           "C2"),
+        ("Canto",             "C3"),
+        ("Padrão",            None),
+    ],
+}
+
 
 # ─────────────────────────────────────────────
 # Helpers
@@ -100,6 +125,17 @@ def salvar_conteudo(conteudo: dict, empresa_id: str, tema: str) -> dict[str, Pat
     paths["video"] = path_v
 
     return paths
+
+
+def salvar_carrossel_tweet(slides: list[dict], empresa_id: str, tema: str) -> Path:
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slug = slugify(tema)
+    pasta = OUTPUTS_DIR / empresa_id / "carrossel_tweet"
+    pasta.mkdir(parents=True, exist_ok=True)
+    path = pasta / f"{slug}_{ts}.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"tema": tema, "slides": slides}, f, ensure_ascii=False, indent=2)
+    return path
 
 
 def salvar_blog(texto: str, empresa_id: str, tema: str) -> Path:
@@ -270,7 +306,9 @@ with aba_gerar:
         if not ctx_existente:
             st.warning("Contexto editorial não processado. Vá até a aba **Empresas** e clique em **Processar Contexto** antes de gerar.")
 
-        if st.button("Gerar conteúdo", type="primary", disabled=not tema.strip()):
+        col_btn1, col_btn2 = st.columns(2)
+
+        if col_btn1.button("Gerar conteúdo", type="primary", disabled=not tema.strip(), use_container_width=True):
             with st.spinner("Gerando com Gemini..."):
                 try:
                     conteudo = llm_brain.gerar_conteudo(
@@ -288,6 +326,23 @@ with aba_gerar:
             st.session_state.pop("blog_atual", None)
             st.success(f"Salvo em `outputs/{empresa_sel['id']}/` (carrossel, linkedin, vídeo)")
             st.session_state["conteudo_atual"] = conteudo
+
+        if col_btn2.button("Gerar Carrossel Tweet", disabled=not tema.strip(), use_container_width=True):
+            with st.spinner("Gerando Carrossel Tweet com Gemini..."):
+                try:
+                    slides_tweet = llm_brain.gerar_carrossel_tweet(
+                        tema=tema.strip(),
+                        empresa=empresa_sel["nome"],
+                        empresa_id=empresa_sel["id"],
+                        publico_alvo=empresa_sel["publico_alvo"],
+                        url_site=empresa_sel.get("url_site", ""),
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao gerar Carrossel Tweet: {e}")
+                    st.stop()
+            path_tweet = salvar_carrossel_tweet(slides_tweet, empresa_sel["id"], tema.strip())
+            st.success(f"Carrossel Tweet salvo em `{path_tweet}`")
+            st.session_state["tweet_slides_atual"] = slides_tweet
 
         conteudo = st.session_state.get("conteudo_atual")
         if conteudo:
@@ -335,6 +390,14 @@ with aba_gerar:
                         st.session_state["blog_atual"] = blog_texto
                         st.success(f"Blog salvo em `{path_blog}`")
                         st.rerun()
+
+        tweet_slides = st.session_state.get("tweet_slides_atual")
+        if tweet_slides:
+            st.divider()
+            st.subheader("Carrossel Tweet")
+            for slide in tweet_slides:
+                with st.expander(f"Slide {slide['slide']} — {slide['titulo']}"):
+                    st.write(slide["texto"])
 
 # ─────────────────────────────────────────────
 # ABA: Empresas
@@ -402,35 +465,68 @@ with aba_empresas:
                     st.success("Empresa removida.")
                     st.rerun()
 
-                # ── Logo da empresa ───────────────────────────
+                # ── Logos da empresa ──────────────────────────
                 st.divider()
-                st.markdown("**Logo da empresa**")
-                logo_path = gerador_imagens.logo_empresa(emp["id"])
-                if logo_path:
-                    col_logo, col_del_logo = st.columns([3, 1])
-                    col_logo.image(str(logo_path), width=200)
-                    if col_del_logo.button("Remover logo", key=f"del_logo_{emp['id']}"):
-                        logo_path.unlink()
-                        st.success("Logo removida.")
+                col_logo1_hdr, col_logo2_hdr = st.columns(2)
+
+                # Logo principal (1)
+                with col_logo1_hdr:
+                    st.markdown("**Logo principal**")
+                    logo_path = gerador_imagens.logo_empresa(emp["id"], 1)
+                    if logo_path:
+                        col_logo, col_del_logo = st.columns([3, 1])
+                        col_logo.image(str(logo_path), width=160)
+                        if col_del_logo.button("Remover", key=f"del_logo_{emp['id']}"):
+                            logo_path.unlink()
+                            st.success("Logo removida.")
+                            st.rerun()
+                    logo_upload = st.file_uploader(
+                        "Enviar logo principal (PNG, JPG ou WEBP)",
+                        type=["png", "jpg", "jpeg", "webp"],
+                        key=f"logo_upload_{emp['id']}",
+                        label_visibility="collapsed",
+                    )
+                    if logo_upload:
+                        from pathlib import Path as _Path
+                        logos_dir = _Path("config/logos")
+                        logos_dir.mkdir(parents=True, exist_ok=True)
+                        for old in logos_dir.glob(f"{emp['id']}.*"):
+                            if "_" not in old.stem.replace(emp["id"], ""):
+                                old.unlink()
+                        ext  = logo_upload.name.rsplit(".", 1)[-1].lower()
+                        dest = logos_dir / f"{emp['id']}.{ext}"
+                        dest.write_bytes(logo_upload.getvalue())
+                        st.success("Logo principal salva!")
                         st.rerun()
-                logo_upload = st.file_uploader(
-                    "Enviar logo (PNG, JPG ou WEBP)",
-                    type=["png", "jpg", "jpeg", "webp"],
-                    key=f"logo_upload_{emp['id']}",
-                    label_visibility="collapsed",
-                )
-                if logo_upload:
-                    from pathlib import Path as _Path
-                    logos_dir = _Path("config/logos")
-                    logos_dir.mkdir(parents=True, exist_ok=True)
-                    # Remove versão anterior em qualquer formato
-                    for old in logos_dir.glob(f"{emp['id']}.*"):
-                        old.unlink()
-                    ext  = logo_upload.name.rsplit(".", 1)[-1].lower()
-                    dest = logos_dir / f"{emp['id']}.{ext}"
-                    dest.write_bytes(logo_upload.getvalue())
-                    st.success("Logo salva!")
-                    st.rerun()
+
+                # Logo alternativa (2)
+                with col_logo2_hdr:
+                    st.markdown("**Logo alternativa (2ª opção)**")
+                    logo2_path = gerador_imagens.logo_empresa(emp["id"], 2)
+                    if logo2_path:
+                        col_logo2, col_del_logo2 = st.columns([3, 1])
+                        col_logo2.image(str(logo2_path), width=160)
+                        if col_del_logo2.button("Remover", key=f"del_logo2_{emp['id']}"):
+                            logo2_path.unlink()
+                            st.success("Logo alternativa removida.")
+                            st.rerun()
+                    logo2_upload = st.file_uploader(
+                        "Enviar logo alternativa (PNG, JPG ou WEBP)",
+                        type=["png", "jpg", "jpeg", "webp"],
+                        key=f"logo2_upload_{emp['id']}",
+                        label_visibility="collapsed",
+                    )
+                    if logo2_upload:
+                        from pathlib import Path as _Path
+                        logos_dir = _Path("config/logos")
+                        logos_dir.mkdir(parents=True, exist_ok=True)
+                        for old in logos_dir.glob(f"{emp['id']}_2.*"):
+                            old.unlink()
+                        ext  = logo2_upload.name.rsplit(".", 1)[-1].lower()
+                        dest = logos_dir / f"{emp['id']}_2.{ext}"
+                        dest.write_bytes(logo2_upload.getvalue())
+                        st.success("Logo alternativa salva!")
+                        st.rerun()
 
                 # ── Contexto editorial compilado ──────────────
                 st.divider()
@@ -564,10 +660,11 @@ with aba_empresas:
 # ─────────────────────────────────────────────
 
 TIPOS = {
-    "carrossel": "Carrossel",
-    "linkedin":  "Post LinkedIn",
-    "video":     "Narração Vídeo",
-    "blog":      "Blog",
+    "carrossel":       "Carrossel",
+    "carrossel_tweet": "Carrossel Tweet",
+    "linkedin":        "Post LinkedIn",
+    "video":           "Narração Vídeo",
+    "blog":            "Blog",
 }
 
 with aba_conteudos:
@@ -589,8 +686,8 @@ with aba_conteudos:
                     st.caption("Nenhum conteúdo gerado ainda.")
                     continue
 
-                sub_carrossel, sub_linkedin, sub_video, sub_blog = st.tabs(
-                    [TIPOS["carrossel"], TIPOS["linkedin"], TIPOS["video"], TIPOS["blog"]]
+                sub_carrossel, sub_tweet, sub_linkedin, sub_video, sub_blog = st.tabs(
+                    [TIPOS["carrossel"], TIPOS["carrossel_tweet"], TIPOS["linkedin"], TIPOS["video"], TIPOS["blog"]]
                 )
 
                 def _botao_excluir(emp_id: str, stem: str, tipo: str):
@@ -666,6 +763,19 @@ with aba_conteudos:
                                 "url_site": emp.get("url_site", ""),
                             }
 
+                            # Seletor de logo (mostra apenas se houver 2ª logo cadastrada)
+                            _logo_idx = 1
+                            if gerador_imagens.logo_empresa(emp["id"], 2):
+                                _logos_opts = ["Logo 1 (principal)", "Logo 2 (alternativa)"]
+                                _logo_sel = st.radio(
+                                    "Logo",
+                                    _logos_opts,
+                                    horizontal=True,
+                                    key=f"logo_radio_{path.stem}",
+                                    label_visibility="collapsed",
+                                )
+                                _logo_idx = 2 if _logo_sel == _logos_opts[1] else 1
+
                             if imagens:
                                 col_cap, col_baixar, col_drive, col_regen = st.columns([2, 1, 1, 1])
                                 col_cap.caption(f"{len(imagens)} imagem(ns) gerada(s)")
@@ -697,7 +807,7 @@ with aba_conteudos:
                                 )
                                 cols = st.columns(3)
                                 for idx, img_path in enumerate(imagens):
-                                    slide_n = idx + 1
+                                    slide_n = int(img_path.stem.split("_")[-1])
                                     with cols[idx % 3]:
                                         st.image(str(img_path), use_container_width=True)
                                         col_dl, col_rs = st.columns(2)
@@ -710,6 +820,19 @@ with aba_conteudos:
                                                 key=f"dl_{path.stem}_{idx}",
                                                 use_container_width=True,
                                             )
+                                        # Selectbox de estilo para slides com variante
+                                        _variante_sel = None
+                                        if slide_n in _OPCOES_ESTILO_SLIDE:
+                                            _nomes = [o[0] for o in _OPCOES_ESTILO_SLIDE[slide_n]]
+                                            _vals  = {o[0]: o[1] for o in _OPCOES_ESTILO_SLIDE[slide_n]}
+                                            _sel   = st.selectbox(
+                                                "Estilo",
+                                                _nomes,
+                                                key=f"est_{path.stem}_{slide_n}",
+                                                label_visibility="collapsed",
+                                            )
+                                            _variante_sel = _vals[_sel]
+
                                         if col_rs.button("↺ Slide", key=f"regen_slide_{path.stem}_{idx}", use_container_width=True):
                                             slide_data = next(
                                                 (s for s in dados.get("slides", []) if s.get("slide") == slide_n),
@@ -725,6 +848,8 @@ with aba_conteudos:
                                                             stem=path.stem,
                                                             identidade_visual=iv,
                                                             is_ultimo=(slide_n == total_slides),
+                                                            variante_override=_variante_sel,
+                                                            logo_index=_logo_idx,
                                                         )
                                                         st.rerun()
                                                     except Exception as e:
@@ -749,6 +874,7 @@ with aba_conteudos:
                                             stem=path.stem,
                                             identidade_visual=iv,
                                             callback=_progresso,
+                                            logo_index=_logo_idx,
                                         )
                                         barra.empty()
                                         status.empty()
@@ -764,6 +890,158 @@ with aba_conteudos:
                                 st.write(slide["texto"])
                                 if slide.get("prompt_imagem"):
                                     st.caption(f"🖼️ Imagem: {slide['prompt_imagem']}")
+                                st.divider()
+
+                with sub_tweet:
+                    arquivos_tw = listar_conteudos(emp["id"], "carrossel_tweet")
+                    if not arquivos_tw:
+                        st.caption("Nenhum Carrossel Tweet gerado.")
+                    for path_tw in arquivos_tw:
+                        data_tw = datetime.fromtimestamp(path_tw.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+                        with open(path_tw, encoding="utf-8") as f_tw:
+                            dados_tw = json.load(f_tw)
+                        tema_tw = dados_tw.get("tema", path_tw.stem)
+                        with st.expander(f"{tema_tw}  ·  {data_tw}"):
+                            col_del_tw, col_regen_tw, _esp_tw = st.columns([1, 2, 3])
+                            if col_del_tw.button("Excluir", key=f"del_tweet_{emp['id']}_{path_tw.stem}", type="secondary"):
+                                excluir_conteudo(emp["id"], path_tw.stem)
+                                st.success("Conteúdo excluído.")
+                                st.rerun()
+                            if col_regen_tw.button("↺ Regenerar texto", key=f"regen_tweet_{path_tw.stem}", use_container_width=True):
+                                with st.spinner("Regenerando..."):
+                                    try:
+                                        novos_tw = llm_brain.gerar_carrossel_tweet(
+                                            tema=tema_tw,
+                                            empresa=emp["nome"],
+                                            empresa_id=emp["id"],
+                                            publico_alvo=emp["publico_alvo"],
+                                            url_site=emp.get("url_site", ""),
+                                        )
+                                        dados_tw["slides"] = novos_tw
+                                        with open(path_tw, "w", encoding="utf-8") as _f:
+                                            json.dump(dados_tw, _f, ensure_ascii=False, indent=2)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
+
+                            # ── Imagens Tweet ─────────────────────────
+                            imagens_tw = gerador_imagens.listar_imagens_tweet(emp["id"], path_tw.stem)
+                            iv_tw = {
+                                **emp.get("identidade_visual", {}),
+                                "estilo_imagem": emp.get("estilo_imagem", ""),
+                            }
+
+                            # Seletor de logo + cor do círculo
+                            _logo_idx_tw = 1
+                            _cor_circ_tw = "#1d9bf0"
+                            _tw_col1, _tw_col2 = st.columns([2, 1])
+                            with _tw_col1:
+                                if gerador_imagens.logo_empresa(emp["id"], 2):
+                                    _logos_opts_tw = ["Logo 1 (principal)", "Logo 2 (alternativa)"]
+                                    _logo_sel_tw = st.radio(
+                                        "Logo",
+                                        _logos_opts_tw,
+                                        horizontal=True,
+                                        key=f"logo_radio_tw_{path_tw.stem}",
+                                        label_visibility="collapsed",
+                                    )
+                                    _logo_idx_tw = 2 if _logo_sel_tw == _logos_opts_tw[1] else 1
+                            with _tw_col2:
+                                _cor_circ_tw = st.color_picker(
+                                    "Cor do círculo",
+                                    value="#1d9bf0",
+                                    key=f"cor_circ_tw_{path_tw.stem}",
+                                )
+
+                            if imagens_tw:
+                                col_cap_tw, col_baixar_tw, col_regen_img_tw = st.columns([3, 1, 1])
+                                col_cap_tw.caption(f"{len(imagens_tw)} imagem(ns) gerada(s)")
+                                regen_tw_tudo = col_regen_img_tw.button("↺ Regenerar tudo", key=f"regen_tw_img_{path_tw.stem}", use_container_width=True)
+
+                                zip_buf_tw = io.BytesIO()
+                                with zipfile.ZipFile(zip_buf_tw, "w", zipfile.ZIP_DEFLATED) as zf:
+                                    for idx, ip in enumerate(imagens_tw):
+                                        zf.write(ip, arcname=f"{idx + 1}.png")
+                                zip_buf_tw.seek(0)
+                                col_baixar_tw.download_button(
+                                    label="↓ Baixar tudo",
+                                    data=zip_buf_tw,
+                                    file_name=f"{path_tw.stem}_tweet.zip",
+                                    mime="application/zip",
+                                    key=f"dl_zip_tw_{path_tw.stem}",
+                                    use_container_width=True,
+                                )
+                                cols_tw = st.columns(3)
+                                for idx, img_path_tw in enumerate(imagens_tw):
+                                    slide_n_tw = int(img_path_tw.stem.split("_")[-1])
+                                    with cols_tw[idx % 3]:
+                                        st.image(str(img_path_tw), use_container_width=True)
+                                        col_dl_tw, col_rs_tw = st.columns(2)
+                                        with open(img_path_tw, "rb") as img_f_tw:
+                                            col_dl_tw.download_button(
+                                                label="↓ Baixar",
+                                                data=img_f_tw.read(),
+                                                file_name=img_path_tw.name,
+                                                mime="image/png",
+                                                key=f"dl_tw_{path_tw.stem}_{idx}",
+                                                use_container_width=True,
+                                            )
+                                        if col_rs_tw.button("↺ Slide", key=f"regen_slide_tw_{path_tw.stem}_{idx}", use_container_width=True):
+                                            slide_data_tw = next(
+                                                (s for s in dados_tw.get("slides", []) if s.get("slide") == slide_n_tw),
+                                                None,
+                                            )
+                                            if slide_data_tw:
+                                                with st.spinner(f"Regenerando slide {slide_n_tw}..."):
+                                                    try:
+                                                        gerador_imagens.gerar_imagem_slide_tweet(
+                                                            slide=slide_data_tw,
+                                                            empresa_id=emp["id"],
+                                                            empresa_nome=emp["nome"],
+                                                            stem=path_tw.stem,
+                                                            identidade_visual=iv_tw,
+                                                            logo_index=_logo_idx_tw,
+                                                            cor_circulo_hex=_cor_circ_tw,
+                                                        )
+                                                        st.rerun()
+                                                    except Exception as e:
+                                                        st.error(f"Erro: {e}")
+                            else:
+                                regen_tw_tudo = False
+
+                            if not imagens_tw or regen_tw_tudo:
+                                if regen_tw_tudo or st.button("Gerar Imagens", key=f"gen_img_tw_{path_tw.stem}", type="primary"):
+                                    slides_tw = dados_tw.get("slides", [])
+                                    barra_tw  = st.progress(0, text="Iniciando...")
+                                    status_tw = st.empty()
+
+                                    def _prog_tw(n, total):
+                                        barra_tw.progress(n / total, text=f"Gerando slide {n} de {total}...")
+                                        status_tw.caption(f"Slide {n}/{total} concluído.")
+
+                                    try:
+                                        gerador_imagens.gerar_imagens_carrossel_tweet(
+                                            slides=slides_tw,
+                                            empresa_id=emp["id"],
+                                            empresa_nome=emp["nome"],
+                                            stem=path_tw.stem,
+                                            identidade_visual=iv_tw,
+                                            logo_index=_logo_idx_tw,
+                                            cor_circulo_hex=_cor_circ_tw,
+                                            callback=_prog_tw,
+                                        )
+                                        barra_tw.empty()
+                                        status_tw.empty()
+                                        st.success("Imagens geradas!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
+
+                            st.divider()
+                            st.caption("Slides (texto)")
+                            for slide in dados_tw.get("slides", []):
+                                st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
+                                st.write(slide["texto"])
                                 st.divider()
 
                 with sub_linkedin:

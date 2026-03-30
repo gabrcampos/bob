@@ -1,0 +1,31 @@
+[
+  {
+    "data": "2026-03-30",
+    "tema": "https://istoe.com.br/varejo-deve-faturar-recorde-de-r-357-bi-em-vendas-para-a-pascoa-diz-cnc",
+    "dados_usados": [
+      "[Slide 2] Crescimento Acelerado, Logística Frágil — Apesar do e-commerce ter crescido 30% em mercados emergentes até 2019, a logística da 'Última Milha' persiste como um gargalo.",
+      "[Slide 3] O Elo Perdido da Informação — A falta de integração em tempo real entre WMS, TMS e OMS cria silos de dados, inviabilizando a visibilidade completa da cadeia.",
+      "[Slide 4] Margens Corroídas, Clientes Frustrados — Atrasos na entrega reduzem a probabilidade de recompra em até 4 pontos percentuais, custando ao e-commerce brasileiro milhões em receita não realizada anualmente.",
+      "[Slide 5] Soluções Superficiais Não Resolvem — Abordagens paliativas, como rastreamento básico ou otimização de rotas isolada, não abordam a complexidade fundamental dos sistemas legados.",
+      "[Slide 6] Otimização Logística Reduz Custos e Aumenta SLA — Uma rede varejista regional no Brasil reduziu seus custos logísticos em um terço e aumentou o cumprimento de SLAs em 11% ao remodelar sua malha e estratégia de transportes, incluindo a consolidação de CDs e uso de frota terceirizada.",
+      "[Slide 7] Arquitetura Orientada a Eventos: A Base — A implementação de uma arquitetura orientada a eventos permite o desacoplamento de sistemas e a comunicação assíncrona, viabilizando uma 'Torre de Controle Logístico Digital' em tempo real.",
+      "[Slide 8] Diversidade de Caminhos para a Eficiência — Gigantes como o Walmart reduziram estoques em 10% com inteligência artificial para previsão de demanda, enquanto a Amazon otimizou sua logística com algoritmos de IA e microsserviços para maior escalabilidade.",
+      "[Slide 9] Escolha Estratégica para o Futuro — Considere a flexibilidade para integração com ambientes heterogêneos e o compromisso com a estabilidade operacional a longo prazo, não a busca por soluções de prateleira."
+    ]
+  },
+  {
+    "data": "2026-03-30",
+    "tema": "https://istoe.com.br/varejo-deve-faturar-recorde-de-r-357-bi-em-vendas-para-a-pascoa-diz-cnc",
+    "dados_usados": [
+      "[Slide 1] Varejo: Faturamento recorde, desafios reais. — 58% dos consumidores estão dispostos a abandonar marcas após uma única experiência negativa, com atrasos na entrega liderando os motivos de insatisfação (CX Trends 2024).",
+      "[Slide 2] Sintomas de um Sistema Frágil — Apesar do crescimento do e-commerce, o varejo enfrenta obstáculos sistêmicos que impactam diretamente a operação.",
+      "[Slide 3] A Causa Raiz da Ineficiência — A fragmentação da operação pós-clique, com sistemas legados e múltiplas plataformas operando de forma isolada, é o verdadeiro gargalo que impede a visibilidade e agilidade necessárias.",
+      "[Slide 4] Impactos Diretos nos Resultados — A falta de integração e visibilidade acarreta perdas substanciais e riscos operacionais.",
+      "[Slide 5] Soluções Paliativas Não Sustentam — Abordagens pontuais, como rastreamento básico ou otimização de rotas isoladas, falham em resolver a complexidade intrínseca da cadeia de valor do varejo, que exige integração profunda e visão sistêmica.",
+      "[Slide 6] Visibilidade e Eficiência na Prática — A DHL otimizou seus roteiros com inteligência artificial, resultando em um aumento de 25% na pontualidade das entregas e uma redução de US$ 210 milhões nos custos operacionais globais.",
+      "[Slide 7] A Base da Transformação Logística — A integração de dados em tempo real através de uma arquitetura robusta e plataformas de visibilidade de ponta a ponta é fundamental para antecipar problemas e otimizar a tomada de decisões.",
+      "[Slide 8] Múltiplos Caminhos para a Resolução — A Loggi, por exemplo, alcançou 86% de satisfação do cliente ao usar múltiplos agentes de IA para gerenciar 77% dos atendimentos sem intervenção humana, mostrando a automação no suporte logístico. Já a Mariner Logistics acelerou em 24 vezes o desenvolvimento de produtos ao superar desafios complexos de integração e automação.",
+      "[Slide 9] O que Considerar na Jornada — Avalie a flexibilidade para integrar ambientes heterogêneos, a capacidade de visibilidade em tempo real e a expertise para construir soluções customizadas que garantam estabilidade e crescimento a longo prazo."
+    ]
+  }
+]

@@ -77,17 +77,30 @@ def _proximo_numero(service, parent_id: str) -> str:
         " and mimeType = 'application/vnd.google-apps.folder'"
         " and trashed = false"
     )
-    resultado = service.files().list(
-        q=query, fields="files(name)", pageSize=100,
-        supportsAllDrives=True, includeItemsFromAllDrives=True,
-    ).execute()
 
     numeros = []
-    for item in resultado.get("files", []):
-        try:
-            numeros.append(int(item["name"]))
-        except ValueError:
-            pass
+    page_token = None
+    while True:
+        kwargs = dict(
+            q=query,
+            fields="nextPageToken, files(name)",
+            pageSize=1000,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        if page_token:
+            kwargs["pageToken"] = page_token
+        resultado = service.files().list(**kwargs).execute()
+
+        for item in resultado.get("files", []):
+            try:
+                numeros.append(int(item["name"]))
+            except ValueError:
+                pass
+
+        page_token = resultado.get("nextPageToken")
+        if not page_token:
+            break
 
     proximo = max(numeros) + 1 if numeros else 0
     largura = max(len(str(max(numeros))) if numeros else 0, 2)

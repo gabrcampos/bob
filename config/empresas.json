@@ -55,5 +55,50 @@
         "Poppins"
       ]
     }
+  },
+  {
+    "id": "nomos",
+    "nome": "Nomos",
+    "setor": "Relgov Tech",
+    "publico_alvo": "Profissionais de relações governamentais",
+    "url_site": "https://nomos.pro/",
+    "descricao": "A Nomos é uma plataforma de Inteligência Regulatória e Monitoramento de Mídia projetada para antecipar riscos e oportunidades para departamentos de Relações Governamentais (RelGov), Jurídico, Compliance e Comunicação Corporativa.\n\nEm vez de depender de buscas manuais em dezenas de sites ou do preenchimento de planilhas, a Nomos centraliza o caos informacional das esferas Federal e Estadual em um único radar automatizado, unindo o monitoramento oficial com o pulso da opinião pública.\n\nO que a plataforma monitora?\nA Nomos acompanha o ciclo completo de um risco ou oportunidade regulatória, cobrindo:\n\nPoder Legislativo: Projetos de lei, discursos e agendas no Congresso Nacional e nas Assembleias Legislativas (ALEs).\n\nPoder Executivo e Regulatório: Diários Oficiais da União (DOU) e dos Estados (DOEs), além de normativas de Agências Reguladoras (Anvisa, ANS, ANAC, Bacen).\n\nMídia e Opinião Pública: Clipping em tempo real com base própria de mais de 50 portais de notícias estratégicos.\n\nComo a Nomos entrega a informação?\nPara garantir que o profissional atue no timing exato sem ser soterrado por ruídos, a plataforma divide as entregas de forma inteligente:\n\nAlertas Oficiais via E-mail: Andamentos de tramitações legislativas e publicações em Diários Oficiais chegam estruturados diretamente na caixa de entrada da equipe em tempo real ou diariamente de acordo com a necessidade do usuário.\n\nSmart Summary via WhatsApp com periodicidade customizada podendo ser até de 1 em 1 hora: Resumos de notícias e clipping de imprensa, processados por Inteligência Artificial, chegam no celular para rápida tomada de decisão e gestão de imagem.\n\nO diferencial da Inteligência Artificial (Sentinela):\nA Nomos possui uma IA generativa integrada, o Sentinela. Ele atua como um assistente estratégico que ajuda o usuário a configurar seus radares, sugerindo as melhores palavras-chave, mapeando stakeholders críticos e cruzando dados complexos em segundos. Além de ser uma vertical AI, pois temos os dados em nossa base. \n\nO Valor Estratégico:\nA Nomos atua na transição de um departamento reativo (que descobre o problema quando a lei já foi sancionada ou a multa aplicada) para um modelo de Data-Driven Advocacy. Ela quebra os \"silos\" de informação entre o Jurídico e a Comunicação, garantindo que as empresas atuem nas fases iniciais de construção de uma pauta, protegendo a reputação, o fluxo de caixa e a operação corporativa.",
+    "tom_de_voz": "Especialista que fala simples. A Nomos é séria e confiável, mas comunica como quem está do seu lado — não como regulador, mas como aliado estratégico.",
+    "estilo_imagem": "we are in 1960s. A dramatic with a lot of noise, moody, high-contrast monochrome photograph with a heavy, weathered dark sepia-toned patina. Intense, single side light source creating long shadows. Very tactile, textured heavy film grain and slight light leaks. Raw, historical, and tense film noir aesthetic with shallow depth of field blending edges into shadows. Style of a vintage news wire photo from the 1960s, heavily textured, low-angle perspective.",
+    "drive_folder_id": "13dKQSoQXcfPRsqUvRhT4gNSGY55kgdCx",
+    "identidade_visual": {
+      "primarias": [
+        {
+          "hex": "#000208",
+          "rgb": "0, 2, 8"
+        },
+        {
+          "hex": "#0B1F4D",
+          "rgb": "11, 31, 77"
+        }
+      ],
+      "secundarias": [
+        {
+          "hex": "#9D9E9F",
+          "rgb": "157, 158, 159"
+        },
+        {
+          "hex": "#4070F4",
+          "rgb": "64, 112, 244"
+        },
+        {
+          "hex": "#606162",
+          "rgb": "96, 97, 98"
+        },
+        {
+          "hex": "#202122",
+          "rgb": "32, 33, 34"
+        }
+      ],
+      "fontes": [
+        "Inria Serif",
+        "Inria Sans"
+      ]
+    }
   }
 ]

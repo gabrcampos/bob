@@ -1,6 +1,7 @@
 import os
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from html.parser import HTMLParser
 
@@ -8,13 +9,14 @@ import requests
 from google import genai
 from google.genai import types
 
-CONTEXTOS_DIR = Path("config/contextos")
+CONTEXTOS_DIR  = Path("config/contextos")
+HISTORICO_DIR  = Path("config/historico")
 
 ESTRUTURA_CARROSSEL = """
-Slide 1 — Gancho: frase de impacto que prende a atenção imediatamente. O TÍTULO deste slide deve ser uma frase curta de no máximo 6 palavras que funcione como gancho do conteúdo. O texto deve apresentar o dado ou estatística mais impactante sobre o tema (cite fonte, setor e ano).
-Slide 2 — O Problema: descrição direta do problema em 1-2 frases, sem rodeios
+Slide 1 — Gancho: frase de impacto que prende a atenção imediatamente. O TÍTULO deste slide deve ser uma frase curta de no máximo 6 palavras que funcione como gancho do conteúdo. O TEXTO deve ser tão conciso quanto o título — uma única frase curta e semanticamente completa com o dado ou estatística mais impactante sobre o tema (cite fonte e ano). A frase deve ter sentido pleno; não corte palavras no meio de uma ideia.
+Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato de bullet ✓ (um por linha, iniciando com o caractere ✓ seguido de espaço e o texto). Exemplo: "✓ Falhas frequentes de integração\n✓ Custos operacionais crescentes". Cada item deve ser conciso (máx. 12 palavras).
 Slide 3 — Causa Raiz: por que o problema persiste? A causa real, não o sintoma superficial
-Slide 4 — Impactos: consequências operacionais e financeiras concretas (use números reais)
+Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras concretas usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Exemplo: "✗ Perda de 23% na produtividade\n✗ Aumento de 40% nos custos de TI". Use números reais com fonte.
 Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando
 Slide 6 — Case real: empresa ou setor que resolveu isso, qual abordagem usou e qual resultado obteve (cite fonte)
 Slide 7 — O que está por trás: categoria de solução e princípio que explica o resultado — sem receita, sem produto específico
@@ -54,6 +56,7 @@ Você produz conteúdo editorial para a {empresa}.
 O público-alvo são {publico_alvo}.
 Todo o conteúdo deve ser em português brasileiro.
 {contexto_compilado}
+{historico_recente}
 {padrao_qualidade}
 
 Gere 3 peças de conteúdo sobre o tema "{tema}":
@@ -63,7 +66,7 @@ Gere 3 peças de conteúdo sobre o tema "{tema}":
 Cada slide deve ter:
 - "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 6 palavras — gancho direto)
 - "texto": corpo do slide (máx 2 frases curtas e diretas, sem bullets, sem rodeios — vá direto ao dado ou argumento)
-- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real, não conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) PROIBIDO incluir qualquer texto, letras, palavras, números ou lettering — apenas elementos visuais puros.
+- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real com pessoas, objetos ou ambientes físicos — nunca conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) ABSOLUTAMENTE PROIBIDO: qualquer referência a texto, letras, palavras, números, letreiros, sinalização, telas com escrita, quadros brancos, apresentações, setas com labels, diagramas com texto, gráficos com labels ou qualquer elemento tipográfico — a cena deve ter APENAS elementos visuais puros sem escrita; (d) evite descrever setas, diagramas ou infográficos que naturalmente contenham texto; (e) prefira cenas do mundo físico: pessoas em ação, ambientes corporativos/industriais, paisagens urbanas, equipamentos, reuniões sem foco em telas.
 
 2. POST LINKEDIN (mín 4 parágrafos, máx 3.000 caracteres):
 - Parágrafo 1: fato ou case concreto que para o scroll — dado real ou resultado surpreendente
@@ -97,6 +100,7 @@ Escreva um artigo de blog aprofundado para a {empresa} sobre o tema "{tema}".
 Público-alvo: {publico_alvo}.
 Idioma: português brasileiro.
 {contexto_compilado}
+{historico_recente}
 {padrao_qualidade}
 
 ESTRUTURA DO ARTIGO:
@@ -216,6 +220,52 @@ def salvar_contexto_compilado(empresa_id: str, texto: str):
     caminho_contexto(empresa_id).write_text(texto, encoding="utf-8")
 
 
+# ─────────────────────────────────────────────
+# Histórico de conteúdos (evitar repetição de dados)
+# ─────────────────────────────────────────────
+
+def _caminho_historico(empresa_id: str) -> Path:
+    return HISTORICO_DIR / f"{empresa_id}.json"
+
+
+def salvar_historico(empresa_id: str, tema: str, carrossel: list[dict]):
+    """Persiste um resumo do carrossel gerado para evitar repetição de dados."""
+    HISTORICO_DIR.mkdir(parents=True, exist_ok=True)
+    path = _caminho_historico(empresa_id)
+    historico = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    entrada = {
+        "data": datetime.now().strftime("%Y-%m-%d"),
+        "tema": tema,
+        "dados_usados": [
+            f"[Slide {s.get('slide', i+1)}] {s.get('titulo', '')} — {s.get('texto', '')}"
+            for i, s in enumerate(carrossel)
+        ],
+    }
+    historico.append(entrada)
+    # Mantém apenas as últimas 20 entradas
+    path.write_text(json.dumps(historico[-20:], ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _bloco_historico(empresa_id: str, limit: int = 5) -> str:
+    """Retorna bloco de prompt com histórico recente de conteúdos."""
+    path = _caminho_historico(empresa_id)
+    if not path.exists():
+        return ""
+    historico = json.loads(path.read_text(encoding="utf-8"))
+    recentes = historico[-limit:]
+    if not recentes:
+        return ""
+    linhas = [
+        "\nHISTÓRICO DE CONTEÚDOS ANTERIORES (não repita os mesmos dados, estatísticas, cases ou ângulos):"
+    ]
+    for entrada in recentes:
+        linhas.append(f"\nTema: \"{entrada['tema']}\" ({entrada.get('data', '')})")
+        for dado in entrada.get("dados_usados", []):
+            linhas.append(f"  • {dado}")
+    linhas.append("\nUse perspectivas, cases e dados distintos dos listados acima.\n")
+    return "\n".join(linhas)
+
+
 def processar_contexto(empresa_id: str, empresa_nome: str, url_site: str = "") -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -279,6 +329,7 @@ def gerar_conteudo(
         tema=tema,
         estrutura=ESTRUTURA_CARROSSEL,
         contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
     )
 
@@ -307,6 +358,7 @@ def gerar_conteudo(
             conteudo["empresa"] = empresa
             conteudo["tema"] = tema
             conteudo["publico_alvo"] = publico_alvo
+            salvar_historico(empresa_id, tema, conteudo.get("carrossel", []))
             return conteudo
         except Exception as e:
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
@@ -330,6 +382,7 @@ PROMPT_LINKEDIN_ISOLADO = """Você é um estrategista de conteúdo B2B especiali
 Produz conteúdo editorial para a {empresa}. Público-alvo: {publico_alvo}.
 Todo conteúdo em português brasileiro.
 {contexto_compilado}
+{historico_recente}
 {padrao_qualidade}
 
 Escreva um post LinkedIn sobre "{tema}":
@@ -348,6 +401,7 @@ PROMPT_NARRACAO_ISOLADO = """Você é um estrategista de conteúdo B2B especiali
 Produz conteúdo editorial para a {empresa}. Público-alvo: {publico_alvo}.
 Todo conteúdo em português brasileiro.
 {contexto_compilado}
+{historico_recente}
 {padrao_qualidade}
 
 Escreva uma narração de vídeo de 30-45 segundos (~80-100 palavras) sobre "{tema}":
@@ -389,6 +443,7 @@ def gerar_linkedin(
         publico_alvo=publico_alvo,
         tema=tema,
         contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
     )
     print(f"[LLM] Gerando LinkedIn para: '{tema}' ({empresa})")
@@ -408,6 +463,7 @@ def gerar_narracao(
         publico_alvo=publico_alvo,
         tema=tema,
         contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
     )
     print(f"[LLM] Gerando narração para: '{tema}' ({empresa})")
@@ -429,6 +485,7 @@ def gerar_blog(
         publico_alvo=publico_alvo,
         tema=tema,
         contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
     )
 
@@ -452,3 +509,19 @@ def gerar_blog(
         )
 
     return response.text.strip()
+
+
+# ─────────────────────────────────────────────
+# Carrossel Tweet (usa o mesmo prompt do carrossel regular)
+# ─────────────────────────────────────────────
+
+def gerar_carrossel_tweet(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    url_site: str = "",
+) -> list[dict]:
+    """Gera 9 slides para o Carrossel Tweet usando o mesmo prompt do carrossel regular."""
+    print(f"[LLM] Gerando Carrossel Tweet (via prompt padrão) para: '{tema}' ({empresa})...")
+    return gerar_slides_carrossel(tema, empresa, empresa_id, publico_alvo, url_site)
