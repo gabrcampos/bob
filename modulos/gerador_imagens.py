@@ -5,7 +5,7 @@ from pathlib import Path
 from io import BytesIO
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from google import genai
 from google.genai import types
 
@@ -34,6 +34,52 @@ def logo_empresa(empresa_id: str, index: int = 1) -> Path | None:
 def _hex_para_rgb_tuple(hex_color: str) -> tuple[int, int, int]:
     h = hex_color.lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _trim_logo(img: Image.Image) -> Image.Image:
+    """Remove margens transparentes internas da logo, recortando ao bounding-box do conteúdo visível.
+    Resolve logos com muito espaço em branco/transparente ao redor do símbolo real."""
+    rgba = img.convert("RGBA")
+    bbox = rgba.split()[3].getbbox()   # bounding box do canal alpha (pixels não-transparentes)
+    if bbox and bbox != (0, 0, img.width, img.height):
+        img = img.crop(bbox)
+    return img
+
+
+def _strip_bullets(texto: str) -> str:
+    """Remove prefixos de bullet (✓, ✗, •, -, *) no início de cada linha."""
+    linhas = []
+    for linha in texto.split("\n"):
+        s = linha.strip()
+        for prefixo in ("✓", "✗", "•", "- ", "* "):
+            if s.startswith(prefixo):
+                s = s[len(prefixo):].lstrip()
+                break
+        if s:
+            linhas.append(s)
+    return " ".join(linhas)
+
+
+def _gerar_codigo_barras(largura: int, altura: int) -> Image.Image:
+    """Gera código de barras decorativo (barras pretas grossas e finas sobre fundo transparente)."""
+    img  = Image.new("RGBA", (largura, altura), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+    # Padrão de barras: 1=fino, 2=médio, 3=grosso (unidades relativas)
+    barras  = [3, 1, 2, 1, 1, 3, 1, 2, 1, 3, 2, 1, 1, 2, 3, 1, 2, 1, 1, 3,
+               2, 1, 3, 1, 1, 2, 1, 3, 1, 2, 1, 1, 3, 2, 1, 2, 1, 1, 3, 1]
+    espacos = [1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 1, 2, 1,
+               1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1]
+    total_u = sum(barras) + sum(espacos)
+    unidade = max(1, largura // total_u)
+    x = 0
+    for bw, gw in zip(barras, espacos):
+        bx1 = x
+        bx2 = min(x + bw * unidade - 1, largura - 1)
+        draw.rectangle([bx1, 0, bx2, altura - 1], fill=(0, 0, 0, 255))
+        x += bw * unidade + gw * unidade
+        if x >= largura:
+            break
+    return img
 
 
 def _primeira_cor(cores: list[dict]) -> tuple[int, int, int]:
@@ -103,7 +149,7 @@ def _linhas_bullet(
         if item.startswith("✓") or item.startswith("✗"):
             prefix = item[0]
             rest   = item[1:].lstrip()
-            prefix_txt = prefix + " "
+            prefix_txt = _render_bullet_symbol(prefix) + " "
             prefix_w   = int(draw.textlength(prefix_txt, font=fonte)) + 8
             sublins    = _quebrar_texto(rest, fonte, max_w - prefix_w, draw)
             for j, sl in enumerate(sublins):
@@ -112,6 +158,63 @@ def _linhas_bullet(
             for sl in _quebrar_texto(item, fonte, max_w, draw):
                 result.append(("", sl))
     return result or [("", "")]
+
+
+def _render_bullet_symbol(symbol: str) -> str:
+    """Converte ✓ e ✗ para versões mais grossas para melhor renderização.
+    ✓ (U+2713) → ✔ (U+2714) Heavy check mark
+    ✗ (U+2717) → ✖ (U+2716) Heavy multiplication X
+    """
+    return symbol.replace("✓", "✔").replace("✗", "✖")
+
+
+def _tentar_desenhar_asset_simbolo(
+    canvas: Image.Image,
+    symbol: str,
+    x: int,
+    y: int,
+    tamanho: int,
+) -> bool:
+    """Tenta desenhar asset PNG do símbolo diretamente na canvas.
+    Retorna True se conseguiu desenhar, False se precisa usar fallback."""
+    assets_dir = Path("config/assets")
+    
+    # Mapeamento
+    asset_map = {
+        "✓": "green-check.png",
+        "✗": "x.png",
+    }
+    
+    fallback_map = {
+        "✓": "green-check.png",
+        "✗": "x.pngs",
+    }
+
+    arquivo = asset_map.get(symbol)
+    asset_path = assets_dir / arquivo if arquivo else None
+
+    if not asset_path or not asset_path.exists():
+        # tenta fallback EPS para X se PNG não existir
+        arquivo_fallback = fallback_map.get(symbol)
+        if not arquivo_fallback:
+            return False
+        asset_path = assets_dir / arquivo_fallback
+        if not asset_path.exists():
+            return False
+    
+    try:
+        img = Image.open(asset_path).convert("RGBA")
+        img.thumbnail((tamanho, tamanho), Image.LANCZOS)
+        # Desenha direto na canvas com transparency
+        canvas_rgba = canvas.convert("RGBA")
+        canvas_rgba.paste(img, (x, y), img)
+        # Converte de volta para RGB e sobrescreve a canvas original
+        canvas_rgb = canvas_rgba.convert("RGB")
+        canvas.paste(canvas_rgb)
+        return True
+    except Exception as e:
+        print(f"[Imagens] Erro ao desenhar asset {arquivo}: {e}")
+        return False
 
 
 # ─────────────────────────────────────────────
@@ -195,10 +298,14 @@ def _fonte_cache_parcial(nome: str, peso: int = 400) -> Path | None:
     """Procura no cache o arquivo com sufixo correto (regular/bold)."""
     if not FONTES_DIR.exists():
         return None
-    sufixo   = "bold" if peso >= 600 else "regular"
-    nome_norm = nome.lower().replace(' ', '_')
+    is_bold   = peso >= 600
+    sufixos   = ("bold", "-b", "_b") if is_bold else ("regular", "-r", "_r")
+    nome_norm = nome.lower().replace(' ', '_').replace('-', '_')
     for f in FONTES_DIR.glob("*.ttf"):
-        if nome_norm in f.stem.lower() and sufixo in f.stem.lower():
+        stem = f.stem.lower().replace('-', '_')
+        if nome_norm not in stem:
+            continue
+        if any(stem.endswith(s.replace('-', '_')) or s in stem for s in sufixos):
             print(f"[Imagens] Cache: '{f.name}'")
             return f
     return None
@@ -259,6 +366,7 @@ def _gerar_fundo(prompt_imagem: str, estilo_imagem: str, cores: list[dict]) -> b
     hexes = ", ".join(c["hex"] for c in cores if c.get("hex"))
     prompt = (
         f"Pure visual scene, absolutely NO text NO letters NO words NO numbers NO labels anywhere. "
+        f"Single continuous scene — no split screen, no collage, no composite, no divided panels, no before/after layout. "
         f"{prompt_imagem} "
         f"{estilo_imagem} "
         f"Brand color palette: {hexes or 'dark navy blue and white'}. "
@@ -308,6 +416,12 @@ def _gerar_fundo(prompt_imagem: str, estilo_imagem: str, cores: list[dict]) -> b
     raise RuntimeError(
         f"Nenhum modelo funcionou. Último erro: {ultimo_erro}"
     )
+
+
+def _gerar_fundo_d4(prompt_imagem: str, estilo: str, cores: list[dict]) -> bytes:
+    """Para D4: gera uma imagem completa 1080×1350; compor_slide divide esq/dir via crop PIL."""
+    p = prompt_imagem.split("\n---\n")[0].strip() or prompt_imagem
+    return _gerar_fundo(p, estilo, cores)
 
 
 # ─────────────────────────────────────────────
@@ -365,10 +479,44 @@ def _crop_cover(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
     return img.crop((left, top, left + target_w, top + target_h))
 
 
+def _strip_letterbox(img: Image.Image, threshold: int = 18) -> Image.Image:
+    """Remove barras pretas (letterbox/pillarbox) das bordas da imagem."""
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    step_x = max(1, w // 40)
+    step_y = max(1, h // 40)
+
+    def _row_bright(y: int) -> int:
+        return max(max(rgb.getpixel((x, y))) for x in range(0, w, step_x))
+
+    def _col_bright(x: int) -> int:
+        return max(max(rgb.getpixel((x, y))) for y in range(0, h, step_y))
+
+    top = 0
+    while top < h - 1 and _row_bright(top) <= threshold:
+        top += 1
+    bottom = h - 1
+    while bottom > top and _row_bright(bottom) <= threshold:
+        bottom -= 1
+    left = 0
+    while left < w - 1 and _col_bright(left) <= threshold:
+        left += 1
+    right = w - 1
+    while right > left and _col_bright(right) <= threshold:
+        right -= 1
+
+    if top == 0 and bottom == h - 1 and left == 0 and right == w - 1:
+        return img
+    return img.crop((left, top, right + 1, bottom + 1))
+
+
 def _lh(draw: ImageDraw.ImageDraw, texto: str, font) -> int:
-    """Altura real do glifo: bottom - top do bounding box."""
-    bb = draw.textbbox((0, 0), texto, font=font)
-    return bb[3] - bb[1]
+    """Altura de linha consistente: tamanho nominal da fonte × 1.1 (mínima, sem variação por glifo)."""
+    try:
+        return int(font.size * 1.1)
+    except AttributeError:
+        bb = draw.textbbox((0, 0), texto, font=font)
+        return bb[3] - bb[1]
 
 
 _CAPA_BLK_PAD_V = 14   # padding vertical em cada bloco do título da capa
@@ -463,10 +611,11 @@ def _renderizar_blocos_capa(
 
 
 # Variantes de design por número de slide (1-based)
-_VARIANTES_SLIDES = {2: "A", 5: "B", 7: "C"}
+_VARIANTES_SLIDES = {2: "D1", 4: "D2", 5: "B", 6: "D3", 7: "C", 8: "D4"}
+_IMG_STRIP_H = 380  # height of image strip for D1 (top) and D2 (bottom)
 
 
-def compor_slide(titulo: str, texto: str, fundo_bytes: bytes,
+def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
                  nome_fonte: str | None, *,
                  logo_path: Path | None = None,
                  url_site: str = "",
@@ -476,8 +625,10 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes,
                  variante: str | None = None,
                  slide_num: int = 0,
                  texto_passe: str = "Passe para o lado") -> Image.Image:
-    fundo  = Image.open(BytesIO(fundo_bytes)).convert("RGBA")
-    fundo  = _crop_cover(fundo, SLIDE_W, SLIDE_H)
+    fundo = None
+    if fundo_bytes:
+        fundo = Image.open(BytesIO(fundo_bytes)).convert("RGBA")
+        fundo = _crop_cover(fundo, SLIDE_W, SLIDE_H)
 
     pad    = 64
     SEP_H  = 24
@@ -493,6 +644,320 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes,
 
     # ─── Canvas e parâmetros de layout por variante ──────────────────────────
     _is_capa = (slide_num == 1 and variante is None)
+
+    # ─── Variantes D: novos designs com strip de imagem e tela dividida ─────────
+
+    if variante == "D1":
+        # Image strip TOP + cor primária BOTTOM (slide 2: bullets ✓)
+        IMG_H = _IMG_STRIP_H
+        canvas = Image.new("RGBA", (SLIDE_W, SLIDE_H), (*cor_primaria, 255))
+        if fundo:
+            strip = _crop_cover(fundo, SLIDE_W, IMG_H)
+            canvas.paste(strip, (0, 0))
+        canvas = canvas.convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+
+        text_y_start = IMG_H + 40
+        text_y_end = SLIDE_H - 180
+        max_w = int(SLIDE_W * 0.75)
+        _usar_bullets = slide_num in _SLIDES_COM_BULLETS
+        f_t = f_c = None
+        lt = lc = []
+        lb = None
+        for tam_t, tam_c in [(108, 60), (92, 52), (76, 44), (64, 36), (52, 30), (44, 26)]:
+            f_t = _carregar_fonte(nome_fonte, tam_t, negrito=True)
+            f_c = _carregar_fonte(nome_fonte, tam_c)
+            lt = _quebrar_texto(titulo, f_t, max_w, draw)
+            if _usar_bullets:
+                lb = _linhas_bullet(texto, f_c, max_w, draw)
+                lc = [l for _, l in lb]
+            else:
+                lb = None
+                lc = _quebrar_texto(texto, f_c, max_w, draw)
+            h_t = sum(_lh(draw, l, f_t) + 10 for l in lt)
+            h_c = sum(_lh(draw, l, f_c) + 7 for l in lc)
+            if h_t + 28 + h_c <= text_y_end - text_y_start:
+                break
+
+        # Centraliza verticalmente o bloco na área de cor primária
+        h_t = sum(_lh(draw, l, f_t) + 10 for l in lt)
+        h_c = sum(_lh(draw, l, f_c) + 7 for l in lc)
+        bloco_h = h_t + 28 + h_c
+        area_center = (IMG_H + text_y_end) // 2
+        y = max(text_y_start, area_center - bloco_h // 2)
+        for linha in lt:
+            draw.text((pad, y), linha, font=f_t, fill=(255, 255, 255))
+            y += _lh(draw, linha, f_t)
+        y += 16
+        if lb is not None:
+            for prefix, linha in lb:
+                if prefix in ("✓", "✗"):
+                    cor_p = (50, 220, 80) if prefix == "✓" else (220, 60, 60)
+                    # Tenta desenhar asset PNG
+                    png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, pad, y, 40)
+                    if png_ok:
+                        # Asset foi desenhado, pula o espaço ocupado
+                        pfx_w = 48
+                    else:
+                        # Fallback: desenha texto
+                        pfx_txt = _render_bullet_symbol(prefix) + " "
+                        draw.text((pad, y), pfx_txt, font=f_c, fill=cor_p)
+                        pfx_w = int(draw.textlength(pfx_txt, font=f_c)) + 8
+                    draw.text((pad + pfx_w, y), linha, font=f_c, fill=(255, 255, 255))
+                else:
+                    draw.text((pad, y), linha, font=f_c, fill=(255, 255, 255))
+                y += _lh(draw, linha, f_c) + 7
+        else:
+            for linha in lc:
+                draw.text((pad, y), linha, font=f_c, fill=(255, 255, 255))
+                y += _lh(draw, linha, f_c) + 7
+
+        canvas = _desenhar_elementos_fixos(
+            canvas, None, url_site, cor_primaria, nome_fonte, is_ultimo,
+            texto_passe=texto_passe,
+        )
+        return canvas
+
+    elif variante == "D2":
+        # Cor primária TOP + Image strip BOTTOM (slide 4: bullets ✗)
+        # IMG_H is dynamic: computed from actual text block height
+        _D2_MIN_IMG_H = SLIDE_H // 3       # ~33% min
+        _D2_MAX_IMG_H = int(SLIDE_H * 0.78)  # ~78% max
+        _D2_TEXT_Y_START = 200
+        _D2_BTM_MARGIN = 80  # gap between text and image strip
+
+        # Font-fitting: max text area = SLIDE_H - text_start - min_img - margin
+        _d2_max_text_h = SLIDE_H - _D2_TEXT_Y_START - _D2_MIN_IMG_H - _D2_BTM_MARGIN
+        max_w = SLIDE_W - pad * 2
+        _usar_bullets = slide_num in _SLIDES_COM_BULLETS
+        f_t = f_c = None
+        lt = lc = []
+        lb = None
+        for tam_t, tam_c in [(54, 30), (46, 26)]:
+            f_t = _carregar_fonte(nome_fonte, tam_t, negrito=True)
+            f_c = _carregar_fonte(nome_fonte, tam_c)
+            lt = _quebrar_texto(titulo, f_t, max_w, draw_tmp := ImageDraw.Draw(Image.new("RGB", (SLIDE_W, SLIDE_H))))
+            if _usar_bullets:
+                lb = _linhas_bullet(texto, f_c, max_w, draw_tmp)
+                lc = [l for _, l in lb]
+            else:
+                lb = None
+                lc = _quebrar_texto(texto, f_c, max_w, draw_tmp)
+            h_t = sum(_lh(draw_tmp, l, f_t) + 10 for l in lt)
+            h_c = sum(_lh(draw_tmp, l, f_c) + 7 for l in lc)
+            if h_t + 28 + h_c <= _d2_max_text_h:
+                break
+
+        bloco_h = h_t + 28 + h_c
+        text_bottom = _D2_TEXT_Y_START + bloco_h + _D2_BTM_MARGIN
+        IMG_H = max(_D2_MIN_IMG_H, min(SLIDE_H - text_bottom, _D2_MAX_IMG_H))
+
+        canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+        if fundo:
+            strip = _crop_cover(fundo, SLIDE_W, IMG_H)
+            canvas.paste(strip, (0, SLIDE_H - IMG_H))
+        draw = ImageDraw.Draw(canvas)
+
+        # re-compute lb using real draw object (needed for textlength calls later)
+        if _usar_bullets:
+            lb = _linhas_bullet(texto, f_c, max_w, draw)
+            lc = [l for _, l in lb]
+        elif lb is None:
+            lc = _quebrar_texto(texto, f_c, max_w, draw)
+
+        text_y_start = _D2_TEXT_Y_START
+        y = text_y_start
+        for linha in lt:
+            draw.text((pad, y), linha, font=f_t, fill=(255, 255, 255))
+            y += _lh(draw, linha, f_t) + 10
+        draw.rectangle([pad, y + 6, pad + 80, y + 9], fill=(255, 255, 255))
+        y += 28
+        if lb is not None:
+            for prefix, linha in lb:
+                if prefix in ("✓", "✗"):
+                    cor_p = (50, 220, 80) if prefix == "✓" else (220, 60, 60)
+                    # Tenta desenhar asset PNG
+                    png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, pad, y, 40)
+                    if png_ok:
+                        pfx_w = 48
+                    else:
+                        pfx_txt = _render_bullet_symbol(prefix) + " "
+                        draw.text((pad, y), pfx_txt, font=f_c, fill=cor_p)
+                        pfx_w = int(draw.textlength(pfx_txt, font=f_c)) + 8
+                    draw.text((pad + pfx_w, y), linha, font=f_c, fill=(255, 255, 255))
+                else:
+                    draw.text((pad, y), linha, font=f_c, fill=(255, 255, 255))
+                y += _lh(draw, linha, f_c) + 7
+        else:
+            for linha in lc:
+                draw.text((pad, y), linha, font=f_c, fill=(255, 255, 255))
+                y += _lh(draw, linha, f_c) + 7
+
+        canvas = _desenhar_elementos_fixos(
+            canvas, logo_path, url_site, cor_primaria, nome_fonte, is_ultimo,
+            texto_passe=texto_passe,
+        )
+        return canvas
+
+    elif variante == "D3":
+        # Texto puro: fundo primário, sem imagem IA, tipografia de impacto (slide 6)
+        canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+
+        # "O" decorativo enorme semi-transparente, metade visível na margem direita
+        f_num = _carregar_fonte(nome_fonte, 780, negrito=True)
+        num_txt = "O"
+        num_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        nd = ImageDraw.Draw(num_layer)
+        num_bb = nd.textbbox((0, 0), num_txt, font=f_num)
+        num_w = num_bb[2] - num_bb[0]
+        num_h = num_bb[3] - num_bb[1]
+        nx = SLIDE_W - num_w // 2
+        ny = (SLIDE_H - num_h) // 2
+        nd.text((nx, ny), num_txt, font=f_num, fill=(255, 255, 255, 22))
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), num_layer).convert("RGB")
+
+        draw = ImageDraw.Draw(canvas)
+
+
+        max_w = SLIDE_W - pad * 2 - 60
+        f_t = f_c = None
+        lt = lc = []
+        for tam_t, tam_c in [(70, 38), (62, 34), (54, 30), (46, 26), (38, 22), (32, 18)]:
+            f_t = _carregar_fonte(nome_fonte, tam_t, negrito=True)
+            f_c = _carregar_fonte(nome_fonte, tam_c)
+            lt = _quebrar_texto(titulo, f_t, max_w, draw)
+            lc = _quebrar_texto(texto, f_c, max_w, draw)
+            h_t = sum(_lh(draw, l, f_t) + 12 for l in lt)
+            h_c = sum(_lh(draw, l, f_c) + 8 for l in lc)
+            if h_t + 44 + h_c <= SLIDE_H - 220 - 200:
+                break
+
+        y = 228
+        for linha in lt:
+            draw.text((pad, y), linha, font=f_t, fill=(255, 255, 255))
+            y += _lh(draw, linha, f_t) + 12
+        y += 20
+        for linha in lc:
+            draw.text((pad, y), linha, font=f_c, fill=(255, 255, 255))
+            y += _lh(draw, linha, f_c) + 8
+
+        canvas = _desenhar_elementos_fixos(
+            canvas, logo_path, url_site, cor_primaria, nome_fonte, is_ultimo,
+            texto_passe=texto_passe,
+        )
+        return canvas
+
+    elif variante == "D4":
+        # Tela dividida: dois painéis com imagem IA e texto curto (slide 8)
+        HALF_W = SLIDE_W // 2
+        canvas = Image.new("RGBA", (SLIDE_W, SLIDE_H))
+        if fundo:
+            img_esq = fundo.crop((0, 0, HALF_W, SLIDE_H))
+            img_dir = fundo.crop((HALF_W, 0, SLIDE_W, SLIDE_H))
+            canvas.paste(img_esq, (0, 0))
+            canvas.paste(img_dir, (HALF_W, 0))
+        else:
+            canvas.paste(Image.new("RGBA", (HALF_W, SLIDE_H), (30, 30, 35, 255)), (0, 0))
+            canvas.paste(Image.new("RGBA", (HALF_W, SLIDE_H), (*cor_primaria, 255)), (HALF_W, 0))
+
+        # Overlay escuro esquerda, cor primária direita (legibilidade do texto)
+        canvas_rgba = canvas.convert("RGBA")
+        canvas_rgba.alpha_composite(Image.new("RGBA", (HALF_W, SLIDE_H), (0, 0, 0, 160)), (0, 0))
+        canvas_rgba.alpha_composite(Image.new("RGBA", (HALF_W, SLIDE_H), (*cor_primaria, 140)), (HALF_W, 0))
+        canvas = canvas_rgba.convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+
+        # Linha divisória branca central
+        draw.line([(HALF_W, 0), (HALF_W, SLIDE_H)], fill=(255, 255, 255), width=2)
+
+        # Título principal centralizado no topo (após logo)
+        f_tit = _carregar_fonte(nome_fonte, 38, negrito=True)
+        lt = _quebrar_texto(titulo, f_tit, SLIDE_W - pad * 2, draw)
+        ty = 190
+        BP, BV, BR = 12, 5, 5
+        tit_bg = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        tit_bg_draw = ImageDraw.Draw(tit_bg)
+        ty_tmp = ty
+        for linha in lt:
+            tw = int(draw.textlength(linha, font=f_tit))
+            lh = _lh(draw, linha, f_tit)
+            tx = (SLIDE_W - tw) // 2
+            tit_bg_draw.rounded_rectangle(
+                [tx - BP, ty_tmp - BV, tx + tw + BP, ty_tmp + lh + BV],
+                radius=BR, fill=(0, 0, 0, 175),
+            )
+            ty_tmp += lh + 10
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), tit_bg).convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+        for linha in lt:
+            tw = int(draw.textlength(linha, font=f_tit))
+            draw.text(((SLIDE_W - tw) // 2, ty), linha, font=f_tit, fill=(255, 255, 255))
+            ty += _lh(draw, linha, f_tit) + 10
+
+        # Textos dos painéis
+        partes = texto.split("\n---\n")
+        texto_esq = partes[0].strip() if partes else ""
+        texto_dir = partes[1].strip() if len(partes) > 1 else texto_esq
+
+        PANEL_PAD = 36
+        panel_max_w = HALF_W - PANEL_PAD * 2
+        for tam_c in [34, 30, 26, 22, 18]:
+            f_panel = _carregar_fonte(nome_fonte, tam_c)
+            lc_e = _quebrar_texto(texto_esq, f_panel, panel_max_w, draw)
+            lc_d = _quebrar_texto(texto_dir, f_panel, panel_max_w, draw)
+            h_e = sum(_lh(draw, l, f_panel) + 9 for l in lc_e)
+            h_d = sum(_lh(draw, l, f_panel) + 9 for l in lc_d)
+            if max(h_e, h_d) <= 320:
+                break
+
+        # Painel esquerdo: texto no rodapé
+        h_esq = sum(_lh(draw, l, f_panel) + 9 for l in lc_e)
+        y_esq = SLIDE_H - 160 - h_esq
+
+        # Painel direito: texto no rodapé
+        h_dir = sum(_lh(draw, l, f_panel) + 9 for l in lc_d)
+        y_dir = SLIDE_H - 160 - h_dir
+
+        # Fundo semi-transparente por linha (discreto, estilo capa)
+        BP, BV, BR = 12, 5, 5   # padding horizontal, vertical, raio
+        bg_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        bg_draw  = ImageDraw.Draw(bg_layer)
+        y_tmp = y_esq
+        for linha in lc_e:
+            lw = int(draw.textlength(linha, font=f_panel))
+            lh = _lh(draw, linha, f_panel)
+            bg_draw.rounded_rectangle(
+                [PANEL_PAD - BP, y_tmp - BV, PANEL_PAD + lw + BP, y_tmp + lh + BV],
+                radius=BR, fill=(0, 0, 0, 175),
+            )
+            y_tmp += lh + 9
+        y_tmp = y_dir
+        for linha in lc_d:
+            lw = int(draw.textlength(linha, font=f_panel))
+            lh = _lh(draw, linha, f_panel)
+            bg_draw.rounded_rectangle(
+                [HALF_W + PANEL_PAD - BP, y_tmp - BV, HALF_W + PANEL_PAD + lw + BP, y_tmp + lh + BV],
+                radius=BR, fill=(0, 0, 0, 175),
+            )
+            y_tmp += lh + 9
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), bg_layer).convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+
+        y_tmp = y_esq
+        for linha in lc_e:
+            draw.text((PANEL_PAD, y_tmp), linha, font=f_panel, fill=(255, 255, 255))
+            y_tmp += _lh(draw, linha, f_panel) + 9
+
+        y_tmp = y_dir
+        for linha in lc_d:
+            draw.text((HALF_W + PANEL_PAD, y_tmp), linha, font=f_panel, fill=(255, 255, 255))
+            y_tmp += _lh(draw, linha, f_panel) + 9
+
+        canvas = _desenhar_elementos_fixos(
+            canvas, logo_path, url_site, cor_primaria, nome_fonte, is_ultimo,
+            logo_alinhamento="centro", texto_passe=texto_passe,
+        )
+        return canvas
 
     if variante == "C":
         canvas = Image.new("RGBA", (SLIDE_W, SLIDE_H))
@@ -743,9 +1208,14 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes,
                 x = pad
                 if prefix in ("✓", "✗"):
                     cor_prefix = (50, 220, 80) if prefix == "✓" else (220, 60, 60)
-                    prefix_txt = prefix + " "
-                    draw.text((x, y), prefix_txt, font=f_corpo, fill=cor_prefix)
-                    prefix_w = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
+                    # Tenta desenhar asset PNG
+                    png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, x, y, 40)
+                    if png_ok:
+                        prefix_w = 48
+                    else:
+                        prefix_txt = _render_bullet_symbol(prefix) + " "
+                        draw.text((x, y), prefix_txt, font=f_corpo, fill=cor_prefix)
+                        prefix_w = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
                     draw.text((x + prefix_w, y), linha, font=f_corpo, fill=cor_txt)
                 else:
                     draw.text((x, y), linha, font=f_corpo, fill=cor_txt)
@@ -779,7 +1249,7 @@ def _desenhar_elementos_fixos(
 
     # ── Logo no topo (centralizada ou alinhada à esquerda) ───────────────
     if logo_path and logo_path.exists():
-        logo       = Image.open(logo_path).convert("RGBA")
+        logo       = _trim_logo(Image.open(logo_path).convert("RGBA"))
         max_logo_w = int(SLIDE_W * 0.35)   # máx 35% da largura (~378 px)
         max_logo_h = 110                    # máx altura fixa — limita logos quadradas/altas
         escala     = min(max_logo_w / logo.width, max_logo_h / logo.height)
@@ -924,12 +1394,17 @@ def gerar_imagens_carrossel(
         n    = slide.get("slide", i + 1)
         dest = pasta / f"slide_{n:02d}.png"
 
-        prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
+        prompt_imagem_raw = slide.get("prompt_imagem") or ""
         variante = _VARIANTES_SLIDES.get(n)
         print(f"[Imagens] Slide {n}/{total}: {slide['titulo']}" + (f" [variante {variante}]" if variante else ""))
-        fundo  = _gerar_fundo(prompt_imagem, estilo, cores)
+        if variante == "D3":
+            fundo_slide = None
+        elif variante == "D4":
+            fundo_slide = _gerar_fundo_d4(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+        else:
+            fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
         imagem = compor_slide(
-            slide["titulo"], slide["texto"], fundo, fonte,
+            slide["titulo"], slide["texto"], fundo_slide, fonte,
             logo_path=logo_p, url_site=url_site,
             cor_primaria=cor_prim, cor_secundaria=cor_sec,
             is_ultimo=(i == total - 1),
@@ -967,11 +1442,16 @@ def gerar_imagem_slide(slide: dict, empresa_id: str, stem: str,
     dest     = pasta / f"slide_{n:02d}.png"
     variante = variante_override if variante_override is not None else _VARIANTES_SLIDES.get(n)
 
-    prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
+    prompt_imagem_raw = slide.get("prompt_imagem") or ""
     print(f"[Imagens] Regenerando slide {n}: {slide['titulo']}" + (f" [variante {variante}]" if variante else ""))
-    fundo  = _gerar_fundo(prompt_imagem, estilo, cores)
+    if variante == "D3":
+        fundo_slide = None
+    elif variante == "D4":
+        fundo_slide = _gerar_fundo_d4(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+    else:
+        fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
     imagem = compor_slide(
-        slide["titulo"], slide["texto"], fundo, fonte,
+        slide["titulo"], slide["texto"], fundo_slide, fonte,
         logo_path=logo_p, url_site=url_site,
         cor_primaria=cor_prim, cor_secundaria=cor_sec,
         is_ultimo=is_ultimo,
@@ -1128,7 +1608,7 @@ def compor_slide_tweet(
     )
 
     if logo_path and logo_path.exists():
-        logo    = Image.open(logo_path).convert("RGBA")
+        logo    = _trim_logo(Image.open(logo_path).convert("RGBA"))
         max_dim = int(LOGO_CIRCLE_R * 2.24)
         escala  = min(max_dim / logo.width, max_dim / logo.height)
         new_w   = max(1, int(logo.width  * escala))
@@ -1187,9 +1667,14 @@ def compor_slide_tweet(
         for prefix, linha in linhas_bullet_corpo:
             if prefix in ("✓", "✗"):
                 cor_prefix = (50, 200, 80) if prefix == "✓" else (210, 55, 55)
-                prefix_txt = prefix + " "
-                draw.text((PAD, y), prefix_txt, font=f_corpo, fill=cor_prefix)
-                prefix_w = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
+                # Tenta desenhar asset PNG
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40)
+                if png_ok:
+                    prefix_w = 48
+                else:
+                    prefix_txt = _render_bullet_symbol(prefix) + " "
+                    draw.text((PAD, y), prefix_txt, font=f_corpo, fill=cor_prefix)
+                    prefix_w = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
                 draw.text((PAD + prefix_w, y), linha, font=f_corpo, fill=COR_DESC)
             else:
                 draw.text((PAD, y), linha, font=f_corpo, fill=COR_DESC)
@@ -1202,7 +1687,7 @@ def compor_slide_tweet(
     # ── Seção 4 (slides 3,5,7): Imagem IA horizontal logo após a descrição ─────
     if imagem_bytes is not None:
         img_y    = y + 40
-        img      = Image.open(BytesIO(imagem_bytes)).convert("RGB")
+        img      = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
         img      = _crop_cover(img, _img_w, _TWEET_IMG_H)
         mask_img = Image.new("L", (_img_w, _TWEET_IMG_H), 0)
         ImageDraw.Draw(mask_img).rounded_rectangle(
@@ -1375,6 +1860,883 @@ def gerar_imagem_slide_tweet(
 
 def listar_imagens_tweet(empresa_id: str, stem: str) -> list[Path]:
     pasta = OUTPUTS_DIR / empresa_id / "imagens_tweet" / stem
+    if not pasta.exists():
+        return []
+    return sorted(pasta.glob("slide_*.png"), key=lambda p: int(p.stem.split("_")[-1]))
+
+
+# ─────────────────────────────────────────────
+# Carrossel Misto DD
+# ─────────────────────────────────────────────
+
+_SLIDES_MISTO_DD_COM_IMAGEM = frozenset({1, 2, 3, 4, 6, 7, 8})
+_MISTO_DD_BULLETS_FAIL      = frozenset({4})   # ✗
+_MISTO_DD_BULLETS_CHECK     = frozenset({6})   # ✓
+_MISTO_DD_BULLETS           = _MISTO_DD_BULLETS_FAIL | _MISTO_DD_BULLETS_CHECK
+
+
+def compor_slide_misto_dd(
+    titulo: str,
+    texto: str,
+    empresa_nome: str,
+    nome_fonte: str | None,
+    *,
+    logo_path: Path | None = None,
+    logo_path_2: Path | None = None,
+    url_site: str = "",
+    cor_primaria: tuple[int, int, int] = (220, 30, 30),
+    cor_secundaria: tuple[int, int, int] = (80, 90, 100),
+    imagem_bytes: bytes | None = None,
+    slide_num: int = 1,
+) -> Image.Image:
+    """Compõe um slide do Carrossel Misto DD. Cada slide_num tem um layout distinto."""
+
+    PAD             = 72
+    LINHA_GAP       = 10
+    BRANCO          = (255, 255, 255)
+    CINZA_ESCURO    = (30, 30, 35)
+    COR_TITULO_DARK = (15, 20, 30)
+    COR_TEXTO_GRAY  = (80, 90, 100)
+
+    def _logo(canvas: Image.Image, x: int, y: int, h: int) -> Image.Image:
+        if not (logo_path and logo_path.exists()):
+            return canvas
+        limg = _trim_logo(Image.open(logo_path).convert("RGBA"))
+        esc  = h / limg.height
+        lw   = max(1, int(limg.width * esc))
+        limg = limg.resize((lw, h), Image.LANCZOS)
+        base = canvas.convert("RGBA")
+        base.paste(limg, (x, y), limg)
+        return base.convert("RGB")
+
+    def _overlay_alpha(canvas: Image.Image, cor: tuple, alpha: int) -> Image.Image:
+        layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (*cor, alpha))
+        base  = canvas.convert("RGBA")
+        base.alpha_composite(layer)
+        return base.convert("RGB")
+
+    def _paste_region(canvas: Image.Image, img_bytes: bytes,
+                      x: int, y: int, w: int, h: int) -> Image.Image:
+        img = Image.open(BytesIO(img_bytes)).convert("RGB")
+        img = _crop_cover(img, w, h)
+        canvas.paste(img, (x, y))
+        return canvas
+
+    # ── Slide 1: Capa — imagem fundo completo + gradiente esquerda ───────────
+    if slide_num == 1:
+        canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+
+        if imagem_bytes:
+            img = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            img = _crop_cover(img, SLIDE_W, SLIDE_H)
+            canvas.paste(img, (0, 0))
+
+        # Gradiente escuro na metade esquerda para legibilidade do texto
+        HALF_W    = SLIDE_W // 2 + 80
+        grad_larg = HALF_W + 120
+        grad      = _gradiente_lateral(grad_larg, SLIDE_H, (0, 0, 0), alpha_esq=210, ponto_fade=0.6)
+        base_g    = canvas.convert("RGBA")
+        base_g.alpha_composite(grad)
+        canvas = base_g.convert("RGB")
+
+        draw      = ImageDraw.Draw(canvas)
+        max_w_txt = HALF_W - PAD * 2
+
+        canvas = _logo(canvas, PAD, PAD, 60)
+        draw   = ImageDraw.Draw(canvas)
+
+        f_titulo = _carregar_fonte(nome_fonte, 40, negrito=True)
+        for tam in [72, 64, 56, 48, 40]:
+            f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
+            lt  = _quebrar_texto(titulo, f_t, max_w_txt, draw)
+            if len(lt) <= 4:
+                f_titulo, linhas_titulo = f_t, lt
+                break
+        else:
+            linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w_txt, draw)
+
+        f_corpo      = _carregar_fonte(nome_fonte, 32)
+        linhas_corpo = _quebrar_texto(texto, f_corpo, max_w_txt, draw)
+
+        h_tit  = sum(_lh(draw, l, f_titulo) + LINHA_GAP for l in linhas_titulo)
+        h_corp = sum(_lh(draw, l, f_corpo)  + LINHA_GAP for l in linhas_corpo)
+        ARRASTE_H = 72
+        total_h   = h_tit + 24 + h_corp
+        y = max(PAD + 80, (SLIDE_H - total_h - ARRASTE_H) // 2)
+
+        for linha in linhas_titulo:
+            draw.text((PAD, y), linha, font=f_titulo, fill=BRANCO)
+            y += _lh(draw, linha, f_titulo) + LINHA_GAP
+        y += 24
+        for linha in linhas_corpo:
+            draw.text((PAD, y), linha, font=f_corpo, fill=(220, 220, 220))
+            y += _lh(draw, linha, f_corpo) + LINHA_GAP
+
+        # "Arraste para o lado" — rodapé direito, margem reduzida
+        f_arr   = _carregar_fonte(nome_fonte, 32)
+        txt_arr = "Arraste para o lado"
+        arr_h   = _lh(draw, txt_arr, f_arr)
+        y_arr   = SLIDE_H - 80 - arr_h
+        draw    = ImageDraw.Draw(canvas)
+        if _ARRASTE_ICONE_PATH.exists():
+            icone  = Image.open(_ARRASTE_ICONE_PATH).convert("RGBA")
+            ic_esc = arr_h / icone.height
+            ic_w   = max(1, int(icone.width * ic_esc))
+            icone  = icone.resize((ic_w, arr_h), Image.LANCZOS)
+            txt_w  = int(draw.textlength(txt_arr, font=f_arr))
+            sx     = SLIDE_W - PAD - txt_w - 12 - ic_w
+            draw.text((sx, y_arr), txt_arr, font=f_arr, fill=(230, 230, 230))
+            base = canvas.convert("RGBA")
+            base.paste(icone, (sx + txt_w + 12, y_arr + 12), icone)
+            canvas = base.convert("RGB")
+        else:
+            txt_w = int(draw.textlength(txt_arr, font=f_arr))
+            ImageDraw.Draw(canvas).text(
+                (SLIDE_W - PAD - txt_w, y_arr), txt_arr, font=f_arr, fill=(230, 230, 230)
+            )
+        return canvas
+
+    # ── Slide 2: Imagem fundo + card branco embaixo + elipse horizontal com logo
+    elif slide_num == 2:
+        canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+
+        if imagem_bytes:
+            img = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            img = _crop_cover(img, SLIDE_W, SLIDE_H)
+            canvas.paste(img, (0, 0))
+
+        # Fade escuro leve sobre toda a imagem
+        canvas = _overlay_alpha(canvas, (0, 0, 0), 70)
+        draw   = ImageDraw.Draw(canvas)
+
+        # ── Dimensões da elipse horizontal (logo) ─────────────────────────
+        ELIPSE_W  = int(SLIDE_W * 0.25)   # ~270 px de largura
+        ELIPSE_H  = int(ELIPSE_W * 0.22)  # ~59 px de altura
+        ELIPSE_PAD_BOTTOM = 56            # distância da margem inferior
+        elipse_cx = SLIDE_W // 2
+        elipse_cy = SLIDE_H - ELIPSE_PAD_BOTTOM - ELIPSE_H // 2
+
+        # ── Card branco — posicionado acima da elipse ──────────────────────
+        CARD_PAD   = 40
+        CARD_MAX_W = int(SLIDE_W * 0.80)
+        f_corpo    = _carregar_fonte(nome_fonte, 34)
+        texto_limpo  = _strip_bullets(texto)
+        linhas_corpo = _quebrar_texto(texto_limpo, f_corpo, CARD_MAX_W - CARD_PAD * 2, draw)
+
+        corpo_h = sum(_lh(draw, l, f_corpo) + LINHA_GAP for l in linhas_corpo)
+        card_h  = corpo_h + CARD_PAD * 2
+        card_w  = CARD_MAX_W
+        card_x  = (SLIDE_W - card_w) // 2
+        # card começa acima da elipse com gap de 32px
+        ELIPSE_TOP = elipse_cy - ELIPSE_H // 2
+        card_y  = ELIPSE_TOP - 32 - card_h
+
+        base_card  = canvas.convert("RGBA")
+        card_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(card_layer).rounded_rectangle(
+            [card_x, card_y, card_x + card_w, card_y + card_h],
+            radius=18, fill=(255, 255, 255, 245),
+        )
+        base_card.alpha_composite(card_layer)
+        canvas = base_card.convert("RGB")
+        draw   = ImageDraw.Draw(canvas)
+
+        # Texto preto dentro do card
+        ty = card_y + CARD_PAD
+        for linha in linhas_corpo:
+            draw.text((card_x + CARD_PAD, ty), linha, font=f_corpo, fill=(10, 10, 10))
+            ty += _lh(draw, linha, f_corpo) + LINHA_GAP
+
+        # ── Pill (rounded rectangle) horizontal com cor primária ─────────
+        base_e       = canvas.convert("RGBA")
+        elipse_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        pill_x0 = elipse_cx - ELIPSE_W // 2
+        pill_y0 = elipse_cy - ELIPSE_H // 2
+        pill_x1 = elipse_cx + ELIPSE_W // 2
+        pill_y1 = elipse_cy + ELIPSE_H // 2
+        ImageDraw.Draw(elipse_layer).rounded_rectangle(
+            [pill_x0, pill_y0, pill_x1, pill_y1],
+            radius=ELIPSE_H // 2,          # raio = metade da altura → pill perfeito
+            fill=(*cor_primaria, 255),
+        )
+        base_e.alpha_composite(elipse_layer)
+        canvas = base_e.convert("RGB")
+
+        # Logo centralizada dentro da elipse — largura dinâmica, margem interna de 18%
+        if logo_path and logo_path.exists():
+            limg     = _trim_logo(Image.open(logo_path).convert("RGBA"))
+            max_lw   = int(ELIPSE_W * 0.82)   # 82% da largura da elipse
+            max_lh   = int(ELIPSE_H * 0.72)   # 72% da altura da elipse
+            esc      = min(max_lw / limg.width, max_lh / limg.height)
+            lw       = max(1, int(limg.width  * esc))
+            lh       = max(1, int(limg.height * esc))
+            limg     = limg.resize((lw, lh), Image.LANCZOS)
+            base_l   = canvas.convert("RGBA")
+            base_l.paste(limg, (elipse_cx - lw // 2, elipse_cy - lh // 2), limg)
+            canvas   = base_l.convert("RGB")
+
+        return canvas
+
+    # ── Slide 3: Cor primária + texto grande + imagem IA arredondada embaixo ──
+    elif slide_num == 3:
+        canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+        draw   = ImageDraw.Draw(canvas)
+
+        # ── Círculo decorativo grande no canto superior direito ───────────
+        COR_CLARO = tuple(min(255, c + 30) for c in cor_primaria)
+        circ_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        CIRC_R = int(SLIDE_W * 0.42)
+        ImageDraw.Draw(circ_layer).ellipse(
+            [SLIDE_W - CIRC_R, -CIRC_R // 2,
+             SLIDE_W + CIRC_R, CIRC_R + CIRC_R // 2],
+            fill=(*COR_CLARO, 55),
+        )
+        canvas.convert("RGBA")
+        base_c = canvas.convert("RGBA")
+        base_c.alpha_composite(circ_layer)
+        canvas = base_c.convert("RGB")
+        draw   = ImageDraw.Draw(canvas)
+
+        # ── Logo 2 cortada pela metade no canto inferior esquerdo (atrás da imagem IA)
+        if logo_path_2 and logo_path_2.exists():
+            l2   = _trim_logo(Image.open(logo_path_2).convert("RGBA"))
+            h2   = int(SLIDE_H * 0.22)          # ~297 px — bem maior
+            esc2 = h2 / l2.height
+            w2   = max(1, int(l2.width * esc2))
+            l2   = l2.resize((w2, h2), Image.LANCZOS)
+            r2, g2, b2, a2 = l2.split()
+            a2 = a2.point(lambda p: int(p * 0.22))
+            l2.putalpha(a2)
+            l2_x = -w2 // 6
+            l2_y = SLIDE_H - h2 // 2
+            base_l2 = canvas.convert("RGBA")
+            base_l2.paste(l2, (l2_x, l2_y), l2)
+            canvas = base_l2.convert("RGB")
+            draw   = ImageDraw.Draw(canvas)
+
+        # ── Imagem IA arredondada no rodapé (sobre a logo 2) ─────────────
+        IMG_H          = SLIDE_H // 2        # 675 px
+        IMG_W          = int(SLIDE_W * 0.87) # ~939 px
+        img_x          = (SLIDE_W - IMG_W) // 2
+        IMG_PAD_BOTTOM = 60
+        img_y          = SLIDE_H - IMG_PAD_BOTTOM - IMG_H
+
+        if imagem_bytes:
+            img  = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            img  = _crop_cover(img, IMG_W, IMG_H)
+            mask = Image.new("L", (IMG_W, IMG_H), 0)
+            ImageDraw.Draw(mask).rounded_rectangle(
+                [0, 0, IMG_W - 1, IMG_H - 1], radius=28, fill=255
+            )
+            img_rgba = img.convert("RGBA")
+            img_rgba.putalpha(mask)
+            base_i = canvas.convert("RGBA")
+            base_i.paste(img_rgba, (img_x, img_y), img_rgba)
+            canvas = base_i.convert("RGB")
+            draw   = ImageDraw.Draw(canvas)
+
+        # ── Texto dinâmico — tenta o maior tamanho que cabe na área ──────
+        AREA_TEXTO_H3 = img_y - PAD         # px disponíveis entre topo e imagem
+        max_w_txt     = SLIDE_W - PAD * 2
+        texto_limpo   = _strip_bullets(texto)
+
+        f_corpo = _carregar_fonte(nome_fonte, 38)
+        for tam in [58, 52, 46, 42, 38, 34]:
+            f_t  = _carregar_fonte(nome_fonte, tam)
+            lins = _quebrar_texto(texto_limpo, f_t, max_w_txt, draw)
+            h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lins)
+            if h_t <= AREA_TEXTO_H3 - PAD * 2:
+                f_corpo, linhas_corpo = f_t, lins
+                break
+        else:
+            linhas_corpo = _quebrar_texto(texto_limpo, f_corpo, max_w_txt, draw)
+
+        corpo_h = sum(_lh(draw, l, f_corpo) + LINHA_GAP for l in linhas_corpo)
+        gap_v   = max(PAD, (AREA_TEXTO_H3 - corpo_h) // 2)
+        y       = PAD + gap_v
+
+        # Linhas decorativas discretas (semitransparentes, afastadas do texto)
+        _line_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(_line_layer).rectangle([PAD, y - 32, PAD + 56, y - 26], fill=(255, 255, 255, 90))
+        _base_ln = canvas.convert("RGBA")
+        _base_ln.alpha_composite(_line_layer)
+        canvas = _base_ln.convert("RGB")
+        draw   = ImageDraw.Draw(canvas)
+
+        for linha in linhas_corpo:
+            draw.text((PAD, y), linha, font=f_corpo, fill=BRANCO)
+            y += _lh(draw, linha, f_corpo) + LINHA_GAP
+
+        _line_layer2 = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(_line_layer2).rectangle([PAD, y + 20, PAD + 56, y + 26], fill=(255, 255, 255, 90))
+        _base_ln2 = canvas.convert("RGBA")
+        _base_ln2.alpha_composite(_line_layer2)
+        canvas = _base_ln2.convert("RGB")
+
+        return canvas
+
+    # ── Slide 4: Imagem fundo + fade preto + texto grande posicionado embaixo ─
+    elif slide_num == 4:
+        if imagem_bytes:
+            img    = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            canvas = _crop_cover(img, SLIDE_W, SLIDE_H)
+        else:
+            canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), CINZA_ESCURO)
+        canvas = _overlay_alpha(canvas, (0, 0, 0), 180)
+
+        draw      = ImageDraw.Draw(canvas)
+        TXT_W     = int(SLIDE_W * 0.70)   # 70% da largura
+        PAD_LEFT  = PAD
+        PAD_BOT   = 90
+
+        f_titulo = _carregar_fonte(nome_fonte, 64, negrito=True)
+        for tam in [64, 56, 48]:
+            f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
+            lt  = _quebrar_texto(titulo, f_t, TXT_W, draw)
+            if len(lt) <= 3:
+                f_titulo, linhas_titulo = f_t, lt
+                break
+        else:
+            linhas_titulo = _quebrar_texto(titulo, f_titulo, TXT_W, draw)
+
+        f_corpo       = _carregar_fonte(nome_fonte, 40)
+        linhas_bullet = _linhas_bullet(texto, f_corpo, TXT_W, draw)
+        linhas_corpo  = [l for _, l in linhas_bullet]
+
+        h_tit   = sum(_lh(draw, l, f_titulo) + LINHA_GAP for l in linhas_titulo)
+        h_corp  = sum(_lh(draw, l, f_corpo)  + 16         for l in linhas_corpo)
+        total_h = h_tit + 36 + h_corp
+        # Posicionado mais alto — começa a partir de 30% da altura
+        y = SLIDE_H - PAD_BOT - total_h
+        y = max(int(SLIDE_H * 0.30), y)
+
+        for linha in linhas_titulo:
+            draw.text((PAD_LEFT, y), linha, font=f_titulo, fill=BRANCO)
+            y += _lh(draw, linha, f_titulo) + LINHA_GAP
+        y += 14
+
+        # Renderiza bullets: continuações de linha não recebem símbolo nem dot
+        _last_indent = 0   # indentação da linha de bullet atual
+        for prefix, linha in linhas_bullet:
+            if prefix in ("✓", "✗"):
+                cor_p  = (100, 220, 120) if prefix == "✓" else (255, 100, 100)
+                # Tenta desenhar asset PNG
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD_LEFT, y, 40)
+                if png_ok:
+                    _last_indent = 48
+                else:
+                    ptxt   = _render_bullet_symbol(prefix) + " "
+                    draw.text((PAD_LEFT, y), ptxt, font=f_corpo, fill=cor_p)
+                    _last_indent = int(draw.textlength(ptxt, font=f_corpo)) + 8
+                draw.text((PAD_LEFT + _last_indent, y), linha, font=f_corpo, fill=(220, 220, 220))
+            else:
+                # Continuação de bullet anterior: indenta sem símbolo
+                draw.text((PAD_LEFT + _last_indent, y), linha, font=f_corpo, fill=(220, 220, 220))
+            y += _lh(draw, linha, f_corpo) + 16
+
+        # ── Logo 2: topo direito e bottom left ───────────────────────────────
+        if logo_path_2 and logo_path_2.exists():
+            l2     = _trim_logo(Image.open(logo_path_2).convert("RGBA"))
+            L2_H   = int(SLIDE_H * 0.14 * 1.6)
+            esc2   = L2_H / l2.height
+            L2_W   = max(1, int(l2.width * esc2 * 1.6))
+            l2     = l2.resize((L2_W, L2_H), Image.LANCZOS)
+            r2, g2, b2, a2 = l2.split()
+            a2 = a2.point(lambda p: int(p * 0.38))
+            l2.putalpha(a2)
+            base_l2 = canvas.convert("RGBA")
+            # Topo direito — mostra ~65% do logo
+            base_l2.paste(l2, (SLIDE_W - int(L2_W * 0.65), -int(L2_H * 0.35)), l2)
+            # Bottom left — mostra ~65% do logo
+            base_l2.paste(l2, (-int(L2_W * 0.35), SLIDE_H - int(L2_H * 0.65)), l2)
+            canvas = base_l2.convert("RGB")
+
+        return canvas
+
+    # ── Slide 5: Fundo blur slide 4 + card branco + pill logo + barcode ─────────
+    elif slide_num == 5:
+        # Fundo: imagem do slide 4 com blur (imagem_bytes passada externamente)
+        if imagem_bytes:
+            bg = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            bg = _crop_cover(bg, SLIDE_W, SLIDE_H)
+            bg = bg.filter(ImageFilter.GaussianBlur(radius=18))
+            canvas = bg
+        else:
+            canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+        canvas = _overlay_alpha(canvas, (0, 0, 0), 100)
+
+        # ── Pill + logo (mesmo design do slide 2) ────────────────────────
+        ELIPSE_W        = int(SLIDE_W * 0.25)
+        ELIPSE_H        = int(ELIPSE_W * 0.22)
+        ELIPSE_PAD_BOT  = 56
+        elipse_cx       = SLIDE_W // 2
+        elipse_cy       = SLIDE_H - ELIPSE_PAD_BOT - ELIPSE_H // 2
+
+        pill_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(pill_layer).rounded_rectangle(
+            [elipse_cx - ELIPSE_W // 2, elipse_cy - ELIPSE_H // 2,
+             elipse_cx + ELIPSE_W // 2, elipse_cy + ELIPSE_H // 2],
+            radius=ELIPSE_H // 2, fill=(*cor_primaria, 255),
+        )
+        base_p = canvas.convert("RGBA")
+        base_p.alpha_composite(pill_layer)
+        canvas = base_p.convert("RGB")
+
+        if logo_path and logo_path.exists():
+            limg   = _trim_logo(Image.open(logo_path).convert("RGBA"))
+            max_lw = int(ELIPSE_W * 0.82)
+            max_lh = int(ELIPSE_H * 0.72)
+            esc    = min(max_lw / limg.width, max_lh / limg.height)
+            lw     = max(1, int(limg.width  * esc))
+            lh     = max(1, int(limg.height * esc))
+            limg   = limg.resize((lw, lh), Image.LANCZOS)
+            base_l = canvas.convert("RGBA")
+            base_l.paste(limg, (elipse_cx - lw // 2, elipse_cy - lh // 2), limg)
+            canvas = base_l.convert("RGB")
+
+        # ── Card branco: 84% da largura, acima da pill ───────────────────
+        CARD_W    = int(SLIDE_W * 0.84)
+        CARD_X    = (SLIDE_W - CARD_W) // 2
+        CARD_TOP  = int(SLIDE_H * 0.10)
+        PILL_TOP  = elipse_cy - ELIPSE_H // 2
+        CARD_BOT  = PILL_TOP - 60
+        CARD_H    = CARD_BOT - CARD_TOP
+
+        card_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(card_layer).rectangle(
+            [CARD_X, CARD_TOP, CARD_X + CARD_W, CARD_BOT],
+            fill=(255, 255, 255, 250),
+        )
+        base_c = canvas.convert("RGBA")
+        base_c.alpha_composite(card_layer)
+        canvas = base_c.convert("RGB")
+        draw   = ImageDraw.Draw(canvas)
+
+        # ── Código de barras no rodapé do card ───────────────────────────
+        BAR_H   = int(CARD_H * 0.05)
+        BAR_W   = int(CARD_W * 0.28)
+        bar_x   = CARD_X + (CARD_W - BAR_W) // 2
+        bar_y   = CARD_BOT - 28 - BAR_H
+        barcode = _gerar_codigo_barras(BAR_W, BAR_H)
+        base_b  = canvas.convert("RGBA")
+        base_b.paste(barcode, (bar_x, bar_y), barcode)
+        canvas  = base_b.convert("RGB")
+        draw    = ImageDraw.Draw(canvas)
+
+        # ── Título — ocupa 15% da altura do card ─────────────────────────
+        TITULO_H  = int(CARD_H * 0.15)
+        INNER_PAD = 52   # lateral; padding superior é maior (ver abaixo)
+        max_w_txt = CARD_W - INNER_PAD * 2
+
+        f_titulo = _carregar_fonte(nome_fonte, 52)
+        for tam in [52, 46, 40, 36]:
+            f_t = _carregar_fonte(nome_fonte, tam)
+            lt  = _quebrar_texto(titulo, f_t, max_w_txt, draw)
+            h_t = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lt)
+            if h_t <= TITULO_H:
+                f_titulo, linhas_titulo = f_t, lt
+                break
+        else:
+            linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w_txt, draw)
+
+        y = CARD_TOP + INNER_PAD + 28   # padding superior extra
+        for linha in linhas_titulo:
+            draw.text((CARD_X + INNER_PAD, y), linha, font=f_titulo, fill=COR_TITULO_DARK)
+            y += _lh(draw, linha, f_titulo) + LINHA_GAP
+
+        # ── Descrição — entre título e barcode ───────────────────────────
+        DESC_MAX_H = bar_y - y - 32
+        f_corpo    = _carregar_fonte(nome_fonte, 34)
+        for tam in [34, 30, 26]:
+            f_t  = _carregar_fonte(nome_fonte, tam)
+            lins = _quebrar_texto(_strip_bullets(texto), f_t, max_w_txt, draw)
+            h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lins)
+            if h_t <= DESC_MAX_H:
+                f_corpo, linhas_corpo = f_t, lins
+                break
+        else:
+            linhas_corpo = _quebrar_texto(_strip_bullets(texto), f_corpo, max_w_txt, draw)
+
+        for linha in linhas_corpo:
+            draw.text((CARD_X + INNER_PAD, y), linha, font=f_corpo, fill=COR_TEXTO_GRAY)
+            y += _lh(draw, linha, f_corpo) + LINHA_GAP
+
+        return canvas
+
+    # ── Slide 6: Cor primária + bullets ✓ + strip imagem direita ─────────────
+    elif slide_num == 6:
+        STRIP_W = int(SLIDE_W * 0.28)
+        strip_x = SLIDE_W - STRIP_W
+        canvas  = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+
+        if imagem_bytes:
+            img   = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            img   = _crop_cover(img, STRIP_W, SLIDE_H)
+            canvas.paste(img, (strip_x, 0))
+
+        draw      = ImageDraw.Draw(canvas)
+        max_w_txt = strip_x - PAD - 20
+
+        y = PAD
+
+        f_titulo = _carregar_fonte(nome_fonte, 52, negrito=True)
+        for tam in [52, 44, 38]:
+            f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
+            lt  = _quebrar_texto(titulo, f_t, max_w_txt, draw)
+            if len(lt) <= 4:
+                f_titulo, linhas_titulo = f_t, lt
+                break
+        else:
+            linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w_txt, draw)
+
+        f_corpo       = _carregar_fonte(nome_fonte, 34)
+        linhas_bullet = _linhas_bullet(texto, f_corpo, max_w_txt, draw)
+
+        for linha in linhas_titulo:
+            draw.text((PAD, y), linha, font=f_titulo, fill=BRANCO)
+            y += _lh(draw, linha, f_titulo) + LINHA_GAP
+        y += 24
+        draw.rectangle([PAD, y, PAD + 80, y + 4], fill=BRANCO)
+        y += 22
+
+        for prefix, linha in linhas_bullet:
+            if prefix in ("✓", "✗"):
+                cor_p = (120, 255, 140) if prefix == "✓" else (255, 100, 100)
+                # Tenta desenhar asset PNG
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40)
+                if png_ok:
+                    # Asset foi desenhado
+                    pw = 48
+                else:
+                    # Fallback: desenha texto
+                    ptxt  = _render_bullet_symbol(prefix) + " "
+                    draw.text((PAD, y), ptxt, font=f_corpo, fill=cor_p)
+                    pw = int(draw.textlength(ptxt, font=f_corpo)) + 8
+                draw.text((PAD + pw, y), linha, font=f_corpo, fill=BRANCO)
+            else:
+                # Continuação de linha anterior: indenta com espaço, sem símbolo
+                indent = int(draw.textlength(_render_bullet_symbol("✓") + " ", font=f_corpo)) + 8
+                draw.text((PAD + indent, y), linha, font=f_corpo, fill=BRANCO)
+            y += _lh(draw, linha, f_corpo) + 14
+
+        # ── Logo 2: bottom left, mesmo estilo do slide 4 ─────────────────────
+        if logo_path_2 and logo_path_2.exists():
+            l2   = _trim_logo(Image.open(logo_path_2).convert("RGBA"))
+            L2_H = int(SLIDE_H * 0.14 * 1.6)
+            esc2 = L2_H / l2.height
+            L2_W = max(1, int(l2.width * esc2 * 1.6))
+            l2   = l2.resize((L2_W, L2_H), Image.LANCZOS)
+            r2, g2, b2, a2 = l2.split()
+            a2 = a2.point(lambda p: int(p * 0.38))
+            l2.putalpha(a2)
+            base_l2 = canvas.convert("RGBA")
+            base_l2.paste(l2, (-int(L2_W * 0.35), SLIDE_H - int(L2_H * 0.65)), l2)
+            canvas = base_l2.convert("RGB")
+
+        return canvas
+
+    # ── Slide 7: Antes / Depois split vertical ────────────────────────────────
+    elif slide_num == 7:
+        mid_x = SLIDE_W // 2
+
+        if imagem_bytes:
+            img_full = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            img_full = _crop_cover(img_full, SLIDE_W, SLIDE_H)
+
+            # Metade esquerda: imagem + overlay escuro
+            left  = img_full.crop((0, 0, mid_x, SLIDE_H))
+            dark  = Image.new("RGB", left.size, CINZA_ESCURO)
+            left  = Image.blend(left, dark, 0.70)
+
+            # Metade direita: imagem + tint cor primária
+            right = img_full.crop((mid_x, 0, SLIDE_W, SLIDE_H))
+            tint  = Image.new("RGB", right.size, cor_primaria)
+            right = Image.blend(right, tint, 0.62)
+
+            canvas = Image.new("RGB", (SLIDE_W, SLIDE_H))
+            canvas.paste(left,  (0,     0))
+            canvas.paste(right, (mid_x, 0))
+        else:
+            canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), CINZA_ESCURO)
+            ImageDraw.Draw(canvas).rectangle([mid_x, 0, SLIDE_W, SLIDE_H], fill=cor_primaria)
+
+        draw = ImageDraw.Draw(canvas)
+        draw.rectangle([mid_x - 2, 0, mid_x + 2, SLIDE_H], fill=BRANCO)
+
+        # Parse "ANTES: xxx\n---\nDEPOIS: yyy"
+        partes       = texto.split("\n---\n")
+        texto_antes  = partes[0].replace("ANTES:", "").strip() if partes else ""
+        texto_depois = partes[1].replace("DEPOIS:", "").strip() if len(partes) > 1 else titulo
+
+        f_label   = _carregar_fonte(nome_fonte, 26, negrito=True)
+        label_h   = _lh(draw, "ANTES", f_label) + 16
+
+        # Label ANTES
+        lw_antes = int(draw.textlength("ANTES", font=f_label)) + 24
+        draw.rounded_rectangle([PAD, PAD, PAD + lw_antes, PAD + label_h], radius=4, fill=(60, 60, 68))
+        draw.text((PAD + 12, PAD + 8), "ANTES", font=f_label, fill=(170, 170, 180))
+
+        # Label DEPOIS
+        lw_dep = int(draw.textlength("DEPOIS", font=f_label)) + 24
+        draw.rounded_rectangle(
+            [mid_x + PAD, PAD, mid_x + PAD + lw_dep, PAD + label_h],
+            radius=4, fill=tuple(max(0, c - 20) for c in cor_primaria),
+        )
+        draw.text((mid_x + PAD + 12, PAD + 8), "DEPOIS", font=f_label, fill=BRANCO)
+
+        y_content  = PAD + label_h + 44
+        max_half_w = mid_x - PAD * 2 - 12
+
+        f_body = _carregar_fonte(nome_fonte, 34)
+        linhas_antes  = _quebrar_texto(texto_antes,  f_body, max_half_w, draw)
+        linhas_depois = _quebrar_texto(texto_depois, f_body, max_half_w, draw)
+
+        y_l = y_content
+        for linha in linhas_antes:
+            draw.text((PAD, y_l), linha, font=f_body, fill=(200, 200, 210))
+            y_l += _lh(draw, linha, f_body) + LINHA_GAP
+
+        y_r = y_content
+        for linha in linhas_depois:
+            draw.text((mid_x + PAD, y_r), linha, font=f_body, fill=BRANCO)
+            y_r += _lh(draw, linha, f_body) + LINHA_GAP
+
+        return canvas
+
+    # ── Slide 8: CTA Final — imagem fundo, logo com pill, card branco metade altura ──────────
+    else:
+        # Fundo: imagem IA
+        if imagem_bytes:
+            canvas = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            canvas = _crop_cover(canvas, SLIDE_W, SLIDE_H)
+        else:
+            canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
+
+        # ── Pill + logo (mesmo do slide 5) ────────────────────────
+        ELIPSE_W        = int(SLIDE_W * 0.25)
+        ELIPSE_H        = int(ELIPSE_W * 0.22)
+        ELIPSE_PAD_BOT  = 56
+        elipse_cx       = SLIDE_W // 2
+        elipse_cy       = SLIDE_H - ELIPSE_PAD_BOT - ELIPSE_H // 2
+
+        pill_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(pill_layer).rounded_rectangle(
+            [elipse_cx - ELIPSE_W // 2, elipse_cy - ELIPSE_H // 2,
+             elipse_cx + ELIPSE_W // 2, elipse_cy + ELIPSE_H // 2],
+            radius=ELIPSE_H // 2, fill=(*cor_primaria, 255),
+        )
+        base_p = canvas.convert("RGBA")
+        base_p.alpha_composite(pill_layer)
+        canvas = base_p.convert("RGB")
+
+        if logo_path and logo_path.exists():
+            limg   = _trim_logo(Image.open(logo_path).convert("RGBA"))
+            max_lw = int(ELIPSE_W * 0.82)
+            max_lh = int(ELIPSE_H * 0.72)
+            esc    = min(max_lw / limg.width, max_lh / limg.height)
+            lw     = max(1, int(limg.width  * esc))
+            lh     = max(1, int(limg.height * esc))
+            limg   = limg.resize((lw, lh), Image.LANCZOS)
+            base_l = canvas.convert("RGBA")
+            base_l.paste(limg, (elipse_cx - lw // 2, elipse_cy - lh // 2), limg)
+            canvas = base_l.convert("RGB")
+
+        # ── Card branco: metade da altura do slide 5, sem barcode ───────
+        CARD_W    = int(SLIDE_W * 0.84)
+        CARD_X    = (SLIDE_W - CARD_W) // 2
+        CARD_TOP_ORIG = int(SLIDE_H * 0.10)
+        PILL_TOP  = elipse_cy - ELIPSE_H // 2
+        CARD_BOT  = PILL_TOP - 60
+        CARD_H    = (CARD_BOT - CARD_TOP_ORIG) // 2  # metade da altura
+        CARD_TOP  = CARD_BOT - CARD_H  # posiciona o card no fundo, mantendo o gap
+
+        card_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        ImageDraw.Draw(card_layer).rectangle(
+            [CARD_X, CARD_TOP, CARD_X + CARD_W, CARD_TOP + CARD_H],
+            fill=(255, 255, 255, 250),
+        )
+        base_c = canvas.convert("RGBA")
+        base_c.alpha_composite(card_layer)
+        canvas = base_c.convert("RGB")
+        draw   = ImageDraw.Draw(canvas)
+
+        # ── Conteúdo do card: estrelas (placeholder), título fixo, linha, descrição ──
+        INNER_PAD = 52
+        max_w_txt = CARD_W - INNER_PAD * 2
+        y = CARD_TOP + INNER_PAD
+
+        # 5 yellow stars
+        star_path = Path("config/assets/star.png")
+        if star_path.exists():
+            star_img = Image.open(star_path).convert("RGBA")
+            star_size = 54  # tamanho da estrela
+            star_img = star_img.resize((star_size, star_size), Image.LANCZOS)
+            star_spacing = 10  # espaço entre estrelas
+            total_stars_w = 5 * star_size + 4 * star_spacing
+            star_start_x = CARD_X + INNER_PAD
+            star_y = y
+            for i in range(5):
+                x = star_start_x + i * (star_size + star_spacing)
+                canvas.paste(star_img, (x, star_y), star_img)
+            y += star_size + 20  # espaço abaixo das estrelas
+
+        # Título fixo
+        titulo_fixo = "SE VOCÊ QUER UMA OPERAÇÃO 5 ESTRELAS, TESTE AGORA O DELIVERYDASH."
+        f_titulo = _carregar_fonte(nome_fonte, 36)
+        linhas_titulo = _quebrar_texto(titulo_fixo, f_titulo, max_w_txt, draw)
+        for linha in linhas_titulo:
+            draw.text((CARD_X + INNER_PAD, y), linha, font=f_titulo, fill=COR_TITULO_DARK)
+            y += _lh(draw, linha, f_titulo) + LINHA_GAP
+
+        # Linha divisora discreta
+        y += 10
+        draw.line([CARD_X + INNER_PAD, y, CARD_X + CARD_W - INNER_PAD, y], fill=(200, 200, 200), width=1)
+        y += 20
+
+        # Descrição
+        f_corpo = _carregar_fonte(nome_fonte, 30)
+        linhas_corpo = _quebrar_texto(texto, f_corpo, max_w_txt, draw)
+        for linha in linhas_corpo:
+            draw.text((CARD_X + INNER_PAD, y), linha, font=f_corpo, fill=COR_TEXTO_GRAY)
+            y += _lh(draw, linha, f_corpo) + LINHA_GAP
+
+        return canvas
+
+
+def _gerar_fundo_misto_dd(slide: dict, identidade_visual: dict) -> bytes | None:
+    """Gera imagem IA para um slide do Carrossel Misto DD. Retorna None se falhar."""
+    prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
+    if not prompt_imagem:
+        return None
+    estilo = identidade_visual.get("estilo_imagem", "")
+    cores  = identidade_visual.get("primarias", [])
+    try:
+        return _gerar_fundo(prompt_imagem, estilo, cores)
+    except Exception as e:
+        print(f"[MistoDD] Erro ao gerar imagem para slide {slide.get('slide', '?')}: {e}")
+        return None
+
+
+def gerar_imagens_carrossel_misto_dd(
+    slides: list[dict],
+    empresa_id: str,
+    empresa_nome: str,
+    stem: str,
+    identidade_visual: dict,
+    logo_index: int = 1,
+    callback: callable = None,
+) -> list[Path]:
+    """Gera as 8 imagens do Carrossel Misto DD."""
+    pasta = OUTPUTS_DIR / empresa_id / "imagens_misto_dd" / stem
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    cores      = identidade_visual.get("primarias", [])
+    cores_sec  = identidade_visual.get("secundarias", [])
+    fontes     = identidade_visual.get("fontes", [])
+    fonte_prim = fontes[0] if fontes else None
+    fonte_sec  = fontes[1] if len(fontes) > 1 else fonte_prim
+    logo_p     = logo_empresa(empresa_id, logo_index)
+    logo_p2    = logo_empresa(empresa_id, 2)
+    cor_prim   = _primeira_cor(cores)
+    cor_sec    = _primeira_cor(cores_sec)
+    url_site   = identidade_visual.get("url_site", "")
+
+    paths           = []
+    total           = len(slides)
+    _slide4_bytes   = None   # cache da imagem do slide 4 para reusar no slide 5
+    for i, slide in enumerate(slides):
+        n    = int(slide.get("slide", i + 1))
+        dest = pasta / f"slide_{n:02d}.png"
+        print(f"[MistoDD] Gerando slide {n} → {dest.name}")
+
+        img_bytes = None
+        bg_cache  = pasta / f"bg_{n:02d}.png"
+        if n in _SLIDES_MISTO_DD_COM_IMAGEM:
+            print(f"[MistoDD] Gerando imagem IA para slide {n}...")
+            img_bytes = _gerar_fundo_misto_dd(slide, identidade_visual)
+            if img_bytes:
+                bg_cache.write_bytes(img_bytes)
+            if n == 4:
+                _slide4_bytes = img_bytes   # guarda para o slide 5
+        elif n == 5 and _slide4_bytes:
+            img_bytes = _slide4_bytes       # slide 5 usa imagem do slide 4
+
+        fonte = fonte_prim if n == 1 else fonte_sec
+        imagem = compor_slide_misto_dd(
+            slide["titulo"], slide.get("texto", ""), empresa_nome, fonte,
+            logo_path=logo_p, logo_path_2=logo_p2, url_site=url_site,
+            cor_secundaria=cor_sec,
+            cor_primaria=cor_prim, imagem_bytes=img_bytes, slide_num=n,
+        )
+        imagem.save(str(dest), "PNG")
+        paths.append(dest)
+        if callback:
+            callback(i + 1, total)
+
+    return paths
+
+
+def gerar_imagem_slide_misto_dd(
+    slide: dict,
+    empresa_id: str,
+    empresa_nome: str,
+    stem: str,
+    identidade_visual: dict,
+    logo_index: int = 1,
+    fundo_fixo: bool = False,
+) -> Path:
+    """Regenera a imagem de um único slide do Carrossel Misto DD."""
+    pasta = OUTPUTS_DIR / empresa_id / "imagens_misto_dd" / stem
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    cores      = identidade_visual.get("primarias", [])
+    cores_sec  = identidade_visual.get("secundarias", [])
+    fontes     = identidade_visual.get("fontes", [])
+    fonte_prim = fontes[0] if fontes else None
+    fonte_sec  = fontes[1] if len(fontes) > 1 else fonte_prim
+    logo_p     = logo_empresa(empresa_id, logo_index)
+    logo_p2    = logo_empresa(empresa_id, 2)
+    cor_prim   = _primeira_cor(cores)
+    cor_sec    = _primeira_cor(cores_sec)
+    url_site   = identidade_visual.get("url_site", "")
+
+    n    = int(slide.get("slide", 1))
+    dest = pasta / f"slide_{n:02d}.png"
+    print(f"[MistoDD] Regenerando slide {n} → {dest.name}")
+
+    img_bytes = None
+    bg_cache  = pasta / f"bg_{n:02d}.png"
+    if n in _SLIDES_MISTO_DD_COM_IMAGEM:
+        if fundo_fixo and bg_cache.exists():
+            print(f"[MistoDD] Fundo fixo — reutilizando bg cache para slide {n}.")
+            img_bytes = bg_cache.read_bytes()
+        else:
+            print(f"[MistoDD] Gerando imagem IA para slide {n}...")
+            img_bytes = _gerar_fundo_misto_dd(slide, identidade_visual)
+            if img_bytes:
+                bg_cache.write_bytes(img_bytes)
+            elif bg_cache.exists():
+                print(f"[MistoDD] Falha na geração IA — usando imagem anterior para slide {n}.")
+                img_bytes = bg_cache.read_bytes()
+    elif n == 5:
+        # Reutiliza a imagem do slide 4 já salva em disco
+        slide4_path = pasta / "slide_04.png"
+        if slide4_path.exists():
+            img_bytes = slide4_path.read_bytes()
+
+    fonte  = fonte_prim if n == 1 else fonte_sec
+    imagem = compor_slide_misto_dd(
+        slide["titulo"], slide.get("texto", ""), empresa_nome, fonte,
+        logo_path=logo_p, logo_path_2=logo_p2, url_site=url_site,
+        cor_secundaria=cor_sec,
+        cor_primaria=cor_prim, imagem_bytes=img_bytes, slide_num=n,
+    )
+    imagem.save(str(dest), "PNG")
+    return dest
+
+
+def listar_imagens_misto_dd(empresa_id: str, stem: str) -> list[Path]:
+    pasta = OUTPUTS_DIR / empresa_id / "imagens_misto_dd" / stem
     if not pasta.exists():
         return []
     return sorted(pasta.glob("slide_*.png"), key=lambda p: int(p.stem.split("_")[-1]))

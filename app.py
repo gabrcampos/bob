@@ -138,6 +138,17 @@ def salvar_carrossel_tweet(slides: list[dict], empresa_id: str, tema: str) -> Pa
     return path
 
 
+def salvar_carrossel_misto_dd(slides: list[dict], empresa_id: str, tema: str) -> Path:
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slug = slugify(tema)
+    pasta = OUTPUTS_DIR / empresa_id / "carrossel_misto_dd"
+    pasta.mkdir(parents=True, exist_ok=True)
+    path = pasta / f"{slug}_{ts}.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"tema": tema, "slides": slides}, f, ensure_ascii=False, indent=2)
+    return path
+
+
 def salvar_blog(texto: str, empresa_id: str, tema: str) -> Path:
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
     slug = slugify(tema)
@@ -344,6 +355,23 @@ with aba_gerar:
             st.success(f"Carrossel Tweet salvo em `{path_tweet}`")
             st.session_state["tweet_slides_atual"] = slides_tweet
 
+        if st.button("Gerar Carrossel Misto DD", disabled=not tema.strip(), use_container_width=True):
+            with st.spinner("Gerando Carrossel Misto DD com Gemini..."):
+                try:
+                    slides_mdd = llm_brain.gerar_carrossel_misto_dd(
+                        tema=tema.strip(),
+                        empresa=empresa_sel["nome"],
+                        empresa_id=empresa_sel["id"],
+                        publico_alvo=empresa_sel["publico_alvo"],
+                        url_site=empresa_sel.get("url_site", ""),
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao gerar Carrossel Misto DD: {e}")
+                    st.stop()
+            path_mdd = salvar_carrossel_misto_dd(slides_mdd, empresa_sel["id"], tema.strip())
+            st.success(f"Carrossel Misto DD salvo em `{path_mdd}`")
+            st.session_state["misto_dd_slides_atual"] = slides_mdd
+
         conteudo = st.session_state.get("conteudo_atual")
         if conteudo:
             st.divider()
@@ -396,6 +424,14 @@ with aba_gerar:
             st.divider()
             st.subheader("Carrossel Tweet")
             for slide in tweet_slides:
+                with st.expander(f"Slide {slide['slide']} — {slide['titulo']}"):
+                    st.write(slide["texto"])
+
+        misto_dd_slides = st.session_state.get("misto_dd_slides_atual")
+        if misto_dd_slides:
+            st.divider()
+            st.subheader("Carrossel Misto DD")
+            for slide in misto_dd_slides:
                 with st.expander(f"Slide {slide['slide']} — {slide['titulo']}"):
                     st.write(slide["texto"])
 
@@ -660,11 +696,12 @@ with aba_empresas:
 # ─────────────────────────────────────────────
 
 TIPOS = {
-    "carrossel":       "Carrossel",
-    "carrossel_tweet": "Carrossel Tweet",
-    "linkedin":        "Post LinkedIn",
-    "video":           "Narração Vídeo",
-    "blog":            "Blog",
+    "carrossel":          "Carrossel",
+    "carrossel_tweet":    "Carrossel Tweet",
+    "carrossel_misto_dd": "Carrossel Misto DD",
+    "linkedin":           "Post LinkedIn",
+    "video":              "Narração Vídeo",
+    "blog":               "Blog",
 }
 
 with aba_conteudos:
@@ -686,8 +723,9 @@ with aba_conteudos:
                     st.caption("Nenhum conteúdo gerado ainda.")
                     continue
 
-                sub_carrossel, sub_tweet, sub_linkedin, sub_video, sub_blog = st.tabs(
-                    [TIPOS["carrossel"], TIPOS["carrossel_tweet"], TIPOS["linkedin"], TIPOS["video"], TIPOS["blog"]]
+                sub_carrossel, sub_tweet, sub_misto_dd, sub_linkedin, sub_video, sub_blog = st.tabs(
+                    [TIPOS["carrossel"], TIPOS["carrossel_tweet"], TIPOS["carrossel_misto_dd"],
+                     TIPOS["linkedin"], TIPOS["video"], TIPOS["blog"]]
                 )
 
                 def _botao_excluir(emp_id: str, stem: str, tipo: str):
@@ -1042,6 +1080,200 @@ with aba_conteudos:
                             for slide in dados_tw.get("slides", []):
                                 st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
                                 st.write(slide["texto"])
+                                st.divider()
+
+                with sub_misto_dd:
+                    arquivos_mdd = listar_conteudos(emp["id"], "carrossel_misto_dd")
+                    if not arquivos_mdd:
+                        st.caption("Nenhum Carrossel Misto DD gerado.")
+                    for path_mdd in arquivos_mdd:
+                        data_mdd = datetime.fromtimestamp(path_mdd.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+                        with open(path_mdd, encoding="utf-8") as f_mdd:
+                            dados_mdd = json.load(f_mdd)
+                        tema_mdd = dados_mdd.get("tema", path_mdd.stem)
+                        with st.expander(f"{tema_mdd}  ·  {data_mdd}"):
+                            col_del_mdd, col_regen_mdd, _esp_mdd = st.columns([1, 2, 3])
+                            if col_del_mdd.button("Excluir", key=f"del_mdd_{emp['id']}_{path_mdd.stem}", type="secondary"):
+                                excluir_conteudo(emp["id"], path_mdd.stem)
+                                st.success("Conteúdo excluído.")
+                                st.rerun()
+                            if col_regen_mdd.button("↺ Regenerar texto", key=f"regen_mdd_{path_mdd.stem}", use_container_width=True):
+                                with st.spinner("Regenerando..."):
+                                    try:
+                                        novos_mdd = llm_brain.gerar_carrossel_misto_dd(
+                                            tema=tema_mdd,
+                                            empresa=emp["nome"],
+                                            empresa_id=emp["id"],
+                                            publico_alvo=emp["publico_alvo"],
+                                            url_site=emp.get("url_site", ""),
+                                        )
+                                        dados_mdd["slides"] = novos_mdd
+                                        with open(path_mdd, "w", encoding="utf-8") as _f:
+                                            json.dump(dados_mdd, _f, ensure_ascii=False, indent=2)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
+
+                            # ── Imagens Misto DD ───────────────────────────
+                            imagens_mdd = gerador_imagens.listar_imagens_misto_dd(emp["id"], path_mdd.stem)
+                            iv_mdd = {
+                                **emp.get("identidade_visual", {}),
+                                "estilo_imagem": emp.get("estilo_imagem", ""),
+                                "url_site": emp.get("url_site", ""),
+                            }
+
+                            _logo_idx_mdd = 1
+                            if gerador_imagens.logo_empresa(emp["id"], 2):
+                                _logos_opts_mdd = ["Logo 1 (principal)", "Logo 2 (alternativa)"]
+                                _logo_sel_mdd = st.radio(
+                                    "Logo",
+                                    _logos_opts_mdd,
+                                    horizontal=True,
+                                    key=f"logo_radio_mdd_{path_mdd.stem}",
+                                    label_visibility="collapsed",
+                                )
+                                _logo_idx_mdd = 2 if _logo_sel_mdd == _logos_opts_mdd[1] else 1
+
+                            if imagens_mdd:
+                                col_cap_mdd, col_baixar_mdd, col_drive_mdd, col_regen_mdd_img = st.columns([2, 1, 1, 1])
+                                col_cap_mdd.caption(f"{len(imagens_mdd)} imagem(ns) gerada(s)")
+                                regen_mdd_tudo = col_regen_mdd_img.button("↺ Regenerar tudo", key=f"regen_mdd_img_{path_mdd.stem}", use_container_width=True)
+
+                                folder_id_mdd = emp.get("drive_folder_id", "") or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+                                if col_drive_mdd.button("📤 Drive", key=f"drive_mdd_{path_mdd.stem}", use_container_width=True, disabled=not folder_id_mdd):
+                                    with st.spinner("Enviando para o Google Drive..."):
+                                        try:
+                                            resultados, nome_pasta = drive.enviar_carrossel_drive(imagens_mdd, folder_id_mdd)
+                                            st.success(f"{len(resultados)} imagens enviadas para **{nome_pasta}** no Drive!")
+                                        except Exception as e:
+                                            st.error(f"Erro ao enviar para o Drive: {e}")
+                                if not folder_id_mdd:
+                                    col_drive_mdd.caption("Configure o ID da pasta na aba Empresas")
+
+                                zip_buf_mdd = io.BytesIO()
+                                with zipfile.ZipFile(zip_buf_mdd, "w", zipfile.ZIP_DEFLATED) as zf:
+                                    for idx, ip in enumerate(imagens_mdd):
+                                        zf.write(ip, arcname=f"{idx + 1}.png")
+                                zip_buf_mdd.seek(0)
+                                col_baixar_mdd.download_button(
+                                    label="↓ Baixar tudo",
+                                    data=zip_buf_mdd,
+                                    file_name=f"{path_mdd.stem}_misto_dd.zip",
+                                    mime="application/zip",
+                                    key=f"dl_zip_mdd_{path_mdd.stem}",
+                                    use_container_width=True,
+                                )
+
+                                cols_mdd = st.columns(3)
+                                for idx, img_path_mdd in enumerate(imagens_mdd):
+                                    slide_n_mdd = int(img_path_mdd.stem.split("_")[-1])
+                                    with cols_mdd[idx % 3]:
+                                        st.image(str(img_path_mdd), use_container_width=True)
+                                        fundo_key = f"fundo_ok_mdd_{path_mdd.stem}_{idx}"
+                                        fundo_ok  = st.checkbox("Fundo ok", key=fundo_key)
+                                        col_dl_mdd, col_rs_mdd = st.columns(2)
+                                        with open(img_path_mdd, "rb") as img_f_mdd:
+                                            col_dl_mdd.download_button(
+                                                label="↓ Baixar",
+                                                data=img_f_mdd.read(),
+                                                file_name=img_path_mdd.name,
+                                                mime="image/png",
+                                                key=f"dl_mdd_{path_mdd.stem}_{idx}",
+                                                use_container_width=True,
+                                            )
+                                        if col_rs_mdd.button("↺ Slide", key=f"regen_slide_mdd_{path_mdd.stem}_{idx}", use_container_width=True):
+                                            slide_data_mdd = next(
+                                                (s for s in dados_mdd.get("slides", []) if s.get("slide") == slide_n_mdd),
+                                                None,
+                                            )
+                                            if slide_data_mdd:
+                                                with st.spinner(f"Regenerando slide {slide_n_mdd}..."):
+                                                    try:
+                                                        gerador_imagens.gerar_imagem_slide_misto_dd(
+                                                            slide=slide_data_mdd,
+                                                            empresa_id=emp["id"],
+                                                            empresa_nome=emp["nome"],
+                                                            stem=path_mdd.stem,
+                                                            identidade_visual=iv_mdd,
+                                                            logo_index=_logo_idx_mdd,
+                                                            fundo_fixo=fundo_ok,
+                                                        )
+                                                        st.rerun()
+                                                    except Exception as e:
+                                                        st.error(f"Erro: {e}")
+                            else:
+                                regen_mdd_tudo = False
+
+                            if not imagens_mdd or regen_mdd_tudo:
+                                if regen_mdd_tudo or st.button("Gerar Imagens", key=f"gen_img_mdd_{path_mdd.stem}", type="primary"):
+                                    slides_mdd_gen = dados_mdd.get("slides", [])
+                                    barra_mdd  = st.progress(0, text="Iniciando...")
+                                    status_mdd = st.empty()
+
+                                    def _prog_mdd(n, total):
+                                        barra_mdd.progress(n / total, text=f"Gerando slide {n} de {total}...")
+                                        status_mdd.caption(f"Slide {n}/{total} concluído.")
+
+                                    try:
+                                        gerador_imagens.gerar_imagens_carrossel_misto_dd(
+                                            slides=slides_mdd_gen,
+                                            empresa_id=emp["id"],
+                                            empresa_nome=emp["nome"],
+                                            stem=path_mdd.stem,
+                                            identidade_visual=iv_mdd,
+                                            logo_index=_logo_idx_mdd,
+                                            callback=_prog_mdd,
+                                        )
+                                        barra_mdd.empty()
+                                        status_mdd.empty()
+                                        st.success("Imagens geradas!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
+
+                            st.divider()
+                            st.caption("Slides (texto)")
+                            for slide in dados_mdd.get("slides", []):
+                                st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
+                                st.write(slide["texto"])
+                                if slide.get("prompt_imagem") is not None:
+                                    _edit_key = f"edit_prompt_{path_mdd.stem}_{slide['slide']}"
+                                    _col_p, _col_e = st.columns([6, 1])
+                                    _col_p.caption(f"🖼️ {slide['prompt_imagem']}")
+                                    if _col_e.button("✏️", key=f"btn_ep_{path_mdd.stem}_{slide['slide']}", help="Editar prompt de imagem"):
+                                        st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
+                                    if st.session_state.get(_edit_key, False):
+                                        _novo_prompt = st.text_area(
+                                            "Prompt",
+                                            value=slide["prompt_imagem"],
+                                            key=f"ta_ep_{path_mdd.stem}_{slide['slide']}",
+                                            label_visibility="collapsed",
+                                        )
+                                        _cs, _csr = st.columns(2)
+                                        if _cs.button("💾 Salvar", key=f"sv_ep_{path_mdd.stem}_{slide['slide']}", use_container_width=True):
+                                            slide["prompt_imagem"] = _novo_prompt
+                                            with open(path_mdd, "w", encoding="utf-8") as _fp:
+                                                json.dump(dados_mdd, _fp, ensure_ascii=False, indent=2)
+                                            st.session_state[_edit_key] = False
+                                            st.rerun()
+                                        if _csr.button("💾 Salvar e Regenerar", key=f"svr_ep_{path_mdd.stem}_{slide['slide']}", use_container_width=True):
+                                            slide["prompt_imagem"] = _novo_prompt
+                                            with open(path_mdd, "w", encoding="utf-8") as _fp:
+                                                json.dump(dados_mdd, _fp, ensure_ascii=False, indent=2)
+                                            with st.spinner(f"Regenerando slide {slide['slide']}..."):
+                                                try:
+                                                    gerador_imagens.gerar_imagem_slide_misto_dd(
+                                                        slide=slide,
+                                                        empresa_id=emp["id"],
+                                                        empresa_nome=emp["nome"],
+                                                        stem=path_mdd.stem,
+                                                        identidade_visual=iv_mdd,
+                                                        logo_index=_logo_idx_mdd,
+                                                    )
+                                                    st.session_state[_edit_key] = False
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro: {e}")
                                 st.divider()
 
                 with sub_linkedin:

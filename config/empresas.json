@@ -100,5 +100,38 @@
         "Inria Sans"
       ]
     }
+  },
+  {
+    "id": "deliverydash",
+    "nome": "DeliveryDash",
+    "setor": "Delivery de comida",
+    "publico_alvo": "donos de restaurantes e dark kitchens",
+    "url_site": "https://deliverydash.com.br/",
+    "descricao": "O Deliverydash é um sistema de inteligência operacional e KDS (Sistema de Tela para Cozinha) voltado para restaurantes e Dark Kitchens que lidam com alto volume de delivery.\n\nEle atua como o painel central da operação, substituindo as tradicionais comandas de papel e a gestão baseada na intuição por um controle visual e orientado a dados.\n\nSuas principais funções incluem:\n\nPriorização por Urgência: Em vez de listar os pedidos apenas por ordem de chegada (ordem cronológica), o sistema calcula o tempo limite de entrega e sinaliza visualmente na tela da cozinha o que é \"Crítico\", \"Atenção\" ou \"Seguro\". Isso guia a equipe a preparar primeiro o que tem maior risco de atrasar.\n\nGestão Multimarcas: Centraliza os pedidos, os indicadores de atraso e o faturamento de várias lojas ou marcas virtuais em uma única tela. Isso elimina a necessidade de o gestor navegar por múltiplas abas ou planilhas para ter uma visão consolidada do negócio.\n\nControle Logístico: Sincroniza o ritmo de preparo da cozinha com a expedição, evitando que os pedidos fiquem parados esfriando ou que os motoboys fiquem aguardando na porta sem previsibilidade.\n\nReação em Tempo Real: Fornece um panorama exato de onde estão os gargalos (qual loja ou praça está travando) e permite ações rápidas, como a pausa instantânea de um insumo que acabou, evitando cancelamentos e queda nas avaliações nas plataformas de entrega.\n\nDe forma direta, o Deliverydash é uma ferramenta tecnológica projetada para organizar o fluxo de trabalho interno, permitindo que o restaurante escale suas vendas no horário de pico sem entrar em colapso e sem perder a qualidade no atendimento ao cliente.",
+    "tom_de_voz": "pragmático, direto e focado na realidade operacional, soando como um consultor veterano que conversa de igual para igual com o dono do restaurante. A comunicação combina empatia com um \"choque de realidade\": valida as dores profundas do delivery, como o caos nos horários de pico e a exaustão da equipe, mas confronta o gestor de forma literal e sem analogias, mostrando que o problema é a falta de processos e ferramentas adequadas. Utilizando o vocabulário real das cozinhas, a marca transmite urgência e autoridade, sempre com o objetivo claro de tirar o cliente do \"modo sobrevivência\" focado no achismo e levá-lo para uma gestão profissional, previsível e controlada por dados.",
+    "estilo_imagem": "cinematic photography, hyper-realistic, dramatic directional lighting, shallow depth of field, heavy background bokeh, cinematic color grading, warm highlights and deep cool shadows, ultra-detailed, 8k resolution, shot on 85mm DSLR lens, sharp focus on the main subject, photorealistic masterpiece.",
+    "drive_folder_id": "1Jsh8V0nP6mTFggkIRo6dflzvQGbBY6x-",
+    "identidade_visual": {
+      "primarias": [
+        {
+          "hex": "#c11f12",
+          "rgb": "193, 31, 18"
+        }
+      ],
+      "secundarias": [
+        {
+          "hex": "#ffffff",
+          "rgb": "255, 255, 255"
+        },
+        {
+          "hex": "#000000",
+          "rgb": "0, 0, 0"
+        }
+      ],
+      "fontes": [
+        "Anton",
+        "AnkaCoder"
+      ]
+    }
   }
 ]

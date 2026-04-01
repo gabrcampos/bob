@@ -18,9 +18,9 @@ Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE
 Slide 3 — Causa Raiz: por que o problema persiste? A causa real, não o sintoma superficial
 Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras concretas usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Exemplo: "✗ Perda de 23% na produtividade\n✗ Aumento de 40% nos custos de TI". Use números reais com fonte.
 Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando
-Slide 6 — Case real: empresa ou setor que resolveu isso, qual abordagem usou e qual resultado obteve (cite fonte)
+Slide 6 — Case real: escolha UM único caso emblemático com resultado mensurável e surpreendente. O TÍTULO deve ser o resultado principal em forma de afirmação assertiva (máx 6 palavras). O TEXTO deve ser uma frase única, forte e direta com empresa, abordagem e resultado mensurável (máx 25 palavras, cite fonte). prompt_imagem deve ser "" (este slide não usa imagem).
 Slide 7 — O que está por trás: categoria de solução e princípio que explica o resultado — sem receita, sem produto específico
-Slide 8 — Outros exemplos: 1-2 casos adicionais com abordagens diferentes e resultados distintos, mostrando que não existe solução única
+Slide 8 — Outros exemplos: dois casos distintos com abordagens DIFERENTES, apresentados lado a lado. O TÍTULO deve ser o tema comparativo (máx 5 palavras). O TEXTO deve ter EXATAMENTE este formato: "[Empresa/setor A: abordagem e resultado — máx 15 palavras]\n---\n[Empresa/setor B: abordagem e resultado — máx 15 palavras]". O PROMPT_IMAGEM deve ter EXATAMENTE este formato: "[cena visual para o caso A]\n---\n[cena visual para o caso B]" (dois prompts em inglês separados por \n---\n, cada um sem texto/letras).
 Slide 9 — O que considerar: fatores-chave para avaliar qual caminho faz sentido para o contexto de cada empresa
 """
 
@@ -66,7 +66,7 @@ Gere 3 peças de conteúdo sobre o tema "{tema}":
 Cada slide deve ter:
 - "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 6 palavras — gancho direto)
 - "texto": corpo do slide (máx 2 frases curtas e diretas, sem bullets, sem rodeios — vá direto ao dado ou argumento)
-- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real com pessoas, objetos ou ambientes físicos — nunca conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) ABSOLUTAMENTE PROIBIDO: qualquer referência a texto, letras, palavras, números, letreiros, sinalização, telas com escrita, quadros brancos, apresentações, setas com labels, diagramas com texto, gráficos com labels ou qualquer elemento tipográfico — a cena deve ter APENAS elementos visuais puros sem escrita; (d) evite descrever setas, diagramas ou infográficos que naturalmente contenham texto; (e) prefira cenas do mundo físico: pessoas em ação, ambientes corporativos/industriais, paisagens urbanas, equipamentos, reuniões sem foco em telas.
+- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). EXCEÇÕES DE FORMATO: slide 6 deve ter prompt_imagem="" (sem imagem); slide 8 deve ter EXATAMENTE dois prompts separados por "\n---\n" (um para cada painel). REGRAS OBRIGATÓRIAS para todos os prompts: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real com pessoas, objetos ou ambientes físicos — nunca conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) ABSOLUTAMENTE PROIBIDO: qualquer referência a texto, letras, palavras, números, letreiros, sinalização, telas com escrita, quadros brancos, apresentações, setas com labels, diagramas com texto, gráficos com labels ou qualquer elemento tipográfico — a cena deve ter APENAS elementos visuais puros sem escrita; (d) evite descrever setas, diagramas ou infográficos que naturalmente contenham texto; (e) prefira cenas do mundo físico: pessoas em ação, ambientes corporativos/industriais, paisagens urbanas, equipamentos, reuniões sem foco em telas.
 
 2. POST LINKEDIN (mín 4 parágrafos, máx 3.000 caracteres):
 - Parágrafo 1: fato ou case concreto que para o scroll — dado real ou resultado surpreendente
@@ -525,3 +525,96 @@ def gerar_carrossel_tweet(
     """Gera 9 slides para o Carrossel Tweet usando o mesmo prompt do carrossel regular."""
     print(f"[LLM] Gerando Carrossel Tweet (via prompt padrão) para: '{tema}' ({empresa})...")
     return gerar_slides_carrossel(tema, empresa, empresa_id, publico_alvo, url_site)
+
+
+# ─────────────────────────────────────────────
+# Carrossel Misto DD
+# ─────────────────────────────────────────────
+
+ESTRUTURA_CARROSSEL_MISTO_DD = """
+Slide 1 — Capa/Gancho: título (máx 6 palavras, gancho imediato) + texto (1 frase curta, máx 15 palavras, com dado ou estatística marcante, cite fonte e ano). prompt_imagem: cena física de negócios/logística sem texto.
+Slide 2 — Contexto: apresente o problema com dado concreto. Título curto + texto (1-2 frases diretas, máx 25 palavras, com dado e fonte). prompt_imagem: cena contextual relacionada ao problema.
+Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples). prompt_imagem: cena que ilustre a causa.
+Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras concretas usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). Use dados reais com fonte. prompt_imagem: cena de ambiente impactado negativamente.
+Slide 5 — A Virada: destaque um insight ou dado que muda a perspectiva. Título assertivo + texto (1-2 frases diretas, máx 30 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, com case real e resultado mensurável, cite fonte). Sem imagem (prompt_imagem vazio).
+Slide 6 — O que Funciona: liste 3 a 5 práticas ou resultados usando EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). Use dados reais. prompt_imagem: cena positiva/produtiva.
+Slide 7 — Antes vs Depois: o campo "texto" deve ter EXATAMENTE este formato: "ANTES: [descrição do estado problemático em 1 frase]\n---\nDEPOIS: [descrição do estado melhorado em 1 frase com dado e fonte]". O título deve ser o tema central da comparação (máx 6 palavras). prompt_imagem: cena de transformação ou ambiente melhorado.
+Slide 8 — CTA: título fixo "SE VOCÊ QUER UMA OPERAÇÃO 5 ESTRELAS, TESTE AGORA O DELIVERYDASH." + texto (descrição gerada, 1-2 frases, máx 25 palavras). prompt_imagem: um prato delicioso de restaurante profissional.
+"""
+
+PROMPT_MISTO_DD = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
+Você produz conteúdo editorial para a {empresa}.
+O público-alvo são {publico_alvo}.
+Todo o conteúdo deve ser em português brasileiro.
+{contexto_compilado}
+{historico_recente}
+{padrao_qualidade}
+
+Gere um Carrossel Misto DD de 8 slides sobre o tema "{tema}":
+{estrutura}
+
+Cada slide deve ter:
+- "titulo": título curto e impactante (máx 8 palavras; slides 1, 5 e 8 devem ter máx 6 palavras)
+- "texto": corpo do slide conforme a instrução de cada slide — seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante
+- "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cenas visualmente distintas entre slides; (b) cenas físicas concretas com pessoas, objetos ou ambientes reais; (c) ABSOLUTAMENTE PROIBIDO: qualquer texto, letras, números, letreiros, telas com escrita ou elementos tipográficos; (d) deixe vazio ("") no slide 5.
+
+Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
+Estrutura exata:
+{{
+  "slides": [
+    {{"slide": 1, "titulo": "...", "texto": "...", "prompt_imagem": "..."}},
+    ... (8 slides)
+  ]
+}}"""
+
+
+def gerar_carrossel_misto_dd(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    url_site: str = "",
+) -> list[dict]:
+    """Gera 8 slides para o Carrossel Misto DD."""
+    client = _get_client()
+    bloco_ctx = _bloco_contexto(empresa_id, url_site)
+
+    prompt = PROMPT_MISTO_DD.format(
+        empresa=empresa,
+        publico_alvo=publico_alvo,
+        tema=tema,
+        estrutura=ESTRUTURA_CARROSSEL_MISTO_DD,
+        contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id),
+        padrao_qualidade=PADRAO_QUALIDADE,
+    )
+
+    print(f"[LLM] Gerando Carrossel Misto DD para: '{tema}' ({empresa})...")
+
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+
+    for tentativa in range(3):
+        try:
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config=config,
+                )
+            except Exception as e:
+                print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                )
+            conteudo = _parse_json(response.text)
+            slides = conteudo.get("slides", [])
+            if slides:
+                return slides
+            raise ValueError("JSON retornado sem campo 'slides'")
+        except Exception as e:
+            print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
+
+    raise RuntimeError("Falha ao gerar Carrossel Misto DD após 3 tentativas.")
