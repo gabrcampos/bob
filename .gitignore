@@ -7,3 +7,7 @@ __pycache__/
 config/fontes/
 config/contextos/
 config/arquivos/
+config/drive_token.json
+config/oauth_client.json
+config/historico/
+.claude/settings.local.json

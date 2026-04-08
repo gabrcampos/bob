@@ -143,6 +143,9 @@ def _linhas_bullet(
 ) -> list[tuple[str, str]]:
     """Retorna lista de (prefixo, linha) para texto com bullets ✓/✗ separados por \\n.
     O prefixo é '✓', '✗' ou '' para linhas de continuação."""
+    import re
+    # Normaliza bullets inline ("; ✓ " ou "; ✗ ") para quebras de linha
+    texto = re.sub(r"[;,]?\s*([✓✗])\s+", lambda m: "\n" + m.group(1) + " ", texto)
     result: list[tuple[str, str]] = []
     items = [l.strip() for l in texto.split("\n") if l.strip()]
     for item in items:
@@ -174,6 +177,7 @@ def _tentar_desenhar_asset_simbolo(
     x: int,
     y: int,
     tamanho: int,
+    y_offset: int = 0,
 ) -> bool:
     """Tenta desenhar asset PNG do símbolo diretamente na canvas.
     Retorna True se conseguiu desenhar, False se precisa usar fallback."""
@@ -207,7 +211,7 @@ def _tentar_desenhar_asset_simbolo(
         img.thumbnail((tamanho, tamanho), Image.LANCZOS)
         # Desenha direto na canvas com transparency
         canvas_rgba = canvas.convert("RGBA")
-        canvas_rgba.paste(img, (x, y), img)
+        canvas_rgba.paste(img, (x, y + y_offset), img)
         # Converte de volta para RGB e sobrescreve a canvas original
         canvas_rgb = canvas_rgba.convert("RGB")
         canvas.paste(canvas_rgb)
@@ -1609,7 +1613,7 @@ def compor_slide_tweet(
 
     if logo_path and logo_path.exists():
         logo    = _trim_logo(Image.open(logo_path).convert("RGBA"))
-        max_dim = int(LOGO_CIRCLE_R * 2.24)
+        max_dim = int(LOGO_CIRCLE_R * 1.57)
         escala  = min(max_dim / logo.width, max_dim / logo.height)
         new_w   = max(1, int(logo.width  * escala))
         new_h   = max(1, int(logo.height * escala))
@@ -1664,20 +1668,21 @@ def compor_slide_tweet(
 
     # ── Seção 3: Descrição (regular, com bullets se slides 2/4) ───────────────
     if linhas_bullet_corpo is not None:
+        _last_indent = 0
         for prefix, linha in linhas_bullet_corpo:
             if prefix in ("✓", "✗"):
                 cor_prefix = (50, 200, 80) if prefix == "✓" else (210, 55, 55)
-                # Tenta desenhar asset PNG
-                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40)
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40, y_offset=10)
                 if png_ok:
-                    prefix_w = 48
+                    _last_indent = 48
                 else:
                     prefix_txt = _render_bullet_symbol(prefix) + " "
                     draw.text((PAD, y), prefix_txt, font=f_corpo, fill=cor_prefix)
-                    prefix_w = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
-                draw.text((PAD + prefix_w, y), linha, font=f_corpo, fill=COR_DESC)
+                    _last_indent = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
+                draw.text((PAD + _last_indent, y), linha, font=f_corpo, fill=COR_DESC)
             else:
-                draw.text((PAD, y), linha, font=f_corpo, fill=COR_DESC)
+                # Continuação de bullet anterior: indenta sem símbolo
+                draw.text((PAD + _last_indent, y), linha, font=f_corpo, fill=COR_DESC)
             y += _lh(draw, linha, f_corpo) + LINHA_GAP
     else:
         for linha in linhas_corpo:
@@ -1922,78 +1927,164 @@ def compor_slide_misto_dd(
         canvas.paste(img, (x, y))
         return canvas
 
-    # ── Slide 1: Capa — imagem fundo completo + gradiente esquerda ───────────
+    # ── Slide 1: Capa — estrutura slide 3 + logo pill abaixo da imagem ────────
     if slide_num == 1:
         canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), cor_primaria)
 
+        # Círculo decorativo no canto superior direito
+        COR_CLARO  = tuple(min(255, c + 30) for c in cor_primaria)
+        circ_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        CIRC_R     = int(SLIDE_W * 0.42)
+        ImageDraw.Draw(circ_layer).ellipse(
+            [SLIDE_W - CIRC_R, -CIRC_R // 2,
+             SLIDE_W + CIRC_R, CIRC_R + CIRC_R // 2],
+            fill=(*COR_CLARO, 55),
+        )
+        base_c = canvas.convert("RGBA")
+        base_c.alpha_composite(circ_layer)
+        canvas = base_c.convert("RGB")
+
+        # Logo 2: ghost watermark — bottom left + top right (2x)
+        if logo_path_2 and logo_path_2.exists():
+            l2_src = _trim_logo(Image.open(logo_path_2).convert("RGBA"))
+            h2     = int(SLIDE_H * 0.22) * 3
+            esc2   = h2 / l2_src.height
+            w2     = max(1, int(l2_src.width * esc2))
+            l2     = l2_src.resize((w2, h2), Image.LANCZOS)
+            r2, g2, b2, a2 = l2.split()
+            a2 = a2.point(lambda p: int(p * 0.22))
+            l2.putalpha(a2)
+            base_l2 = canvas.convert("RGBA")
+            base_l2.paste(l2, (-w2 // 2, SLIDE_H - h2 // 2), l2)
+
+            # Top right — 2x tamanho
+            w2_big  = max(1, int(l2_src.width * esc2))
+            l2_big  = l2_src.resize((w2_big, h2), Image.LANCZOS)
+            rb, gb, bb, ab = l2_big.split()
+            ab = ab.point(lambda p: int(p * 0.22))
+            l2_big.putalpha(ab)
+            base_l2.paste(l2_big, (SLIDE_W - int(w2_big * 0.40), -int(h2 * 0.1)), l2_big)
+            canvas = base_l2.convert("RGB")
+
+        # Dimensões da imagem IA
+        LOGO_H         = 56
+        LOGO_GAP       = 24                        # gap entre imagem e logo
+        LOGO_PAD_BOT   = 32                        # margem abaixo da logo
+        IMG_PAD_BOTTOM = LOGO_GAP + LOGO_H + LOGO_PAD_BOT
+        IMG_H          = SLIDE_H // 2
+        IMG_W          = SLIDE_W - PAD * 2
+        img_x          = PAD
+        img_y          = SLIDE_H - IMG_PAD_BOTTOM - IMG_H
+
+        # Imagem IA arredondada no rodapé
         if imagem_bytes:
-            img = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
-            img = _crop_cover(img, SLIDE_W, SLIDE_H)
-            canvas.paste(img, (0, 0))
+            img  = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+            img  = _crop_cover(img, IMG_W, IMG_H)
+            mask = Image.new("L", (IMG_W, IMG_H), 0)
+            ImageDraw.Draw(mask).rounded_rectangle(
+                [0, 0, IMG_W - 1, IMG_H - 1], radius=28, fill=255
+            )
+            img_rgba = img.convert("RGBA")
+            img_rgba.putalpha(mask)
+            base_i = canvas.convert("RGBA")
+            base_i.paste(img_rgba, (img_x, img_y), img_rgba)
+            canvas = base_i.convert("RGB")
 
-        # Gradiente escuro na metade esquerda para legibilidade do texto
-        HALF_W    = SLIDE_W // 2 + 80
-        grad_larg = HALF_W + 120
-        grad      = _gradiente_lateral(grad_larg, SLIDE_H, (0, 0, 0), alpha_esq=210, ponto_fade=0.6)
-        base_g    = canvas.convert("RGBA")
-        base_g.alpha_composite(grad)
-        canvas = base_g.convert("RGB")
+        # Logo centralizada abaixo da imagem (sem pill)
+        LOGO_PAD_Y = img_y + IMG_H + LOGO_GAP
+        if logo_path and logo_path.exists():
+            limg   = _trim_logo(Image.open(logo_path).convert("RGBA"))
+            esc    = LOGO_H / limg.height
+            lw     = max(1, int(limg.width * esc))
+            limg   = limg.resize((lw, LOGO_H), Image.LANCZOS)
+            base_l = canvas.convert("RGBA")
+            base_l.paste(limg, ((SLIDE_W - lw) // 2, LOGO_PAD_Y), limg)
+            canvas = base_l.convert("RGB")
 
-        draw      = ImageDraw.Draw(canvas)
-        max_w_txt = HALF_W - PAD * 2
+        # Título grande colado à imagem (maiúsculo, sem descrição, sem traços)
+        draw         = ImageDraw.Draw(canvas)
+        AREA_TEXTO_H = img_y - PAD
+        titulo_up    = titulo.upper()
 
-        canvas = _logo(canvas, PAD, PAD, 60)
-        draw   = ImageDraw.Draw(canvas)
+        # Pré-carrega seta para conhecer largura real
+        _arrow_path = Path("config/assets/arrow-branco.png")
+        _arr_h      = 92
+        _arrow_img  = None
+        _arr_w      = int(_arr_h * 2.2)  # fallback se arquivo não existir
+        if _arrow_path.exists():
+            _arrow_img = Image.open(_arrow_path).convert("RGBA")
+            _arr_w     = max(1, int(_arrow_img.width * (_arr_h / _arrow_img.height)))
+            _arrow_img = _arrow_img.resize((_arr_w, _arr_h), Image.LANCZOS)
 
-        f_titulo = _carregar_fonte(nome_fonte, 40, negrito=True)
-        for tam in [72, 64, 56, 48, 40]:
+        # Larguras por linha: primeira usa width completo, cada linha seguinte reduz 8%
+        max_w_full  = SLIDE_W - PAD * 2
+        _seta_gap   = _arr_w + PAD
+
+        def _largura_linha(idx: int, total: int) -> int:
+            if idx == 0:
+                reducao = 0.0
+            elif idx == total - 2:   # penúltima linha
+                reducao = 0.10 * idx
+            else:
+                reducao = 0.08 * idx
+            w = max_w_full * (1.0 - reducao)
+            if idx == total - 1:     # última linha: reserva espaço para seta
+                w -= _seta_gap
+            return max(int(w), max_w_full // 3)
+
+        # Fit de tamanho: quebra com widths variáveis e verifica altura total
+        TITULO_GAP    = -8
+        f_titulo      = _carregar_fonte(nome_fonte, 80, negrito=True)
+        linhas_titulo = None
+        for tam in [160, 144, 128, 112, 96, 80]:
             f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
-            lt  = _quebrar_texto(titulo, f_t, max_w_txt, draw)
-            if len(lt) <= 4:
+            # Primeira passagem com width completo para estimar nº de linhas
+            lt_est = _quebrar_texto(titulo_up, f_t, max_w_full, draw)
+            n_est  = len(lt_est)
+            # Segunda passagem com widths variáveis
+            lt = []
+            palavras = titulo_up.split()
+            linha_atual = ""
+            idx_linha   = 0
+            for palavra in palavras:
+                candidata = (linha_atual + " " + palavra).strip()
+                w_lim     = _largura_linha(idx_linha, max(n_est, 1))
+                if int(draw.textlength(candidata, font=f_t)) <= w_lim:
+                    linha_atual = candidata
+                else:
+                    if linha_atual:
+                        lt.append(linha_atual)
+                        idx_linha += 1
+                    linha_atual = palavra
+            if linha_atual:
+                lt.append(linha_atual)
+            h_t = sum(_lh(draw, l, f_t) + TITULO_GAP for l in lt)
+            if h_t <= AREA_TEXTO_H - PAD:
                 f_titulo, linhas_titulo = f_t, lt
                 break
-        else:
-            linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w_txt, draw)
+        if linhas_titulo is None:
+            linhas_titulo = _quebrar_texto(titulo_up, f_titulo, max_w_full, draw)
 
-        f_corpo      = _carregar_fonte(nome_fonte, 32)
-        linhas_corpo = _quebrar_texto(texto, f_corpo, max_w_txt, draw)
+        titulo_h = sum(_lh(draw, l, f_titulo) + TITULO_GAP for l in linhas_titulo)
+        y        = img_y - titulo_h - PAD // 2
 
-        h_tit  = sum(_lh(draw, l, f_titulo) + LINHA_GAP for l in linhas_titulo)
-        h_corp = sum(_lh(draw, l, f_corpo)  + LINHA_GAP for l in linhas_corpo)
-        ARRASTE_H = 72
-        total_h   = h_tit + 24 + h_corp
-        y = max(PAD + 80, (SLIDE_H - total_h - ARRASTE_H) // 2)
-
-        for linha in linhas_titulo:
+        # Renderiza cada linha; calcula Y do centro da última para posicionar a seta
+        y_ultima = y
+        for i, linha in enumerate(linhas_titulo):
+            lh = _lh(draw, linha, f_titulo)
+            if i == len(linhas_titulo) - 1:
+                y_ultima = y + lh // 2
             draw.text((PAD, y), linha, font=f_titulo, fill=BRANCO)
-            y += _lh(draw, linha, f_titulo) + LINHA_GAP
-        y += 24
-        for linha in linhas_corpo:
-            draw.text((PAD, y), linha, font=f_corpo, fill=(220, 220, 220))
-            y += _lh(draw, linha, f_corpo) + LINHA_GAP
+            y += lh + TITULO_GAP
 
-        # "Arraste para o lado" — rodapé direito, margem reduzida
-        f_arr   = _carregar_fonte(nome_fonte, 32)
-        txt_arr = "Arraste para o lado"
-        arr_h   = _lh(draw, txt_arr, f_arr)
-        y_arr   = SLIDE_H - 80 - arr_h
-        draw    = ImageDraw.Draw(canvas)
-        if _ARRASTE_ICONE_PATH.exists():
-            icone  = Image.open(_ARRASTE_ICONE_PATH).convert("RGBA")
-            ic_esc = arr_h / icone.height
-            ic_w   = max(1, int(icone.width * ic_esc))
-            icone  = icone.resize((ic_w, arr_h), Image.LANCZOS)
-            txt_w  = int(draw.textlength(txt_arr, font=f_arr))
-            sx     = SLIDE_W - PAD - txt_w - 12 - ic_w
-            draw.text((sx, y_arr), txt_arr, font=f_arr, fill=(230, 230, 230))
-            base = canvas.convert("RGBA")
-            base.paste(icone, (sx + txt_w + 12, y_arr + 12), icone)
-            canvas = base.convert("RGB")
-        else:
-            txt_w = int(draw.textlength(txt_arr, font=f_arr))
-            ImageDraw.Draw(canvas).text(
-                (SLIDE_W - PAD - txt_w, y_arr), txt_arr, font=f_arr, fill=(230, 230, 230)
-            )
+        # Seta alinhada verticalmente ao centro da última linha do título
+        if _arrow_img is not None:
+            _ax        = SLIDE_W - PAD - _arr_w
+            _ay        = y_ultima - _arr_h // 2
+            _base_seta = canvas.convert("RGBA")
+            _base_seta.paste(_arrow_img, (_ax, _ay), _arrow_img)
+            canvas     = _base_seta.convert("RGB")
+
         return canvas
 
     # ── Slide 2: Imagem fundo + card branco embaixo + elipse horizontal com logo
@@ -2186,34 +2277,34 @@ def compor_slide_misto_dd(
 
         draw      = ImageDraw.Draw(canvas)
         TXT_W     = int(SLIDE_W * 0.70)   # 70% da largura
-        PAD_LEFT  = PAD
+        PAD_LEFT  = PAD + 32
         PAD_BOT   = 90
 
-        f_titulo = _carregar_fonte(nome_fonte, 64, negrito=True)
-        for tam in [64, 56, 48]:
+        f_titulo = _carregar_fonte(nome_fonte, 58, negrito=True)
+        for tam in [58, 50, 43]:
             f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
-            lt  = _quebrar_texto(titulo, f_t, TXT_W, draw)
+            lt  = _quebrar_texto(titulo.upper(), f_t, TXT_W, draw)
             if len(lt) <= 3:
                 f_titulo, linhas_titulo = f_t, lt
                 break
         else:
-            linhas_titulo = _quebrar_texto(titulo, f_titulo, TXT_W, draw)
+            linhas_titulo = _quebrar_texto(titulo.upper(), f_titulo, TXT_W, draw)
 
-        f_corpo       = _carregar_fonte(nome_fonte, 40)
+        f_corpo       = _carregar_fonte(nome_fonte, 36)
         linhas_bullet = _linhas_bullet(texto, f_corpo, TXT_W, draw)
         linhas_corpo  = [l for _, l in linhas_bullet]
 
-        h_tit   = sum(_lh(draw, l, f_titulo) + LINHA_GAP for l in linhas_titulo)
-        h_corp  = sum(_lh(draw, l, f_corpo)  + 16         for l in linhas_corpo)
-        total_h = h_tit + 36 + h_corp
+        h_tit   = sum((_lh(draw, l, f_titulo) + LINHA_GAP) * 3 // 4 for l in linhas_titulo)
+        h_corp  = sum((_lh(draw, l, f_corpo)  + 16) * 3 // 4         for l in linhas_corpo)
+        total_h = h_tit + 180 + h_corp
         # Posicionado mais alto — começa a partir de 30% da altura
         y = SLIDE_H - PAD_BOT - total_h
         y = max(int(SLIDE_H * 0.30), y)
 
         for linha in linhas_titulo:
             draw.text((PAD_LEFT, y), linha, font=f_titulo, fill=BRANCO)
-            y += _lh(draw, linha, f_titulo) + LINHA_GAP
-        y += 14
+            y += (_lh(draw, linha, f_titulo) + LINHA_GAP) * 3 // 4
+        y += 11
 
         # Renderiza bullets: continuações de linha não recebem símbolo nem dot
         _last_indent = 0   # indentação da linha de bullet atual
@@ -2221,9 +2312,9 @@ def compor_slide_misto_dd(
             if prefix in ("✓", "✗"):
                 cor_p  = (100, 220, 120) if prefix == "✓" else (255, 100, 100)
                 # Tenta desenhar asset PNG
-                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD_LEFT, y, 40)
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD_LEFT, y, 36)
                 if png_ok:
-                    _last_indent = 48
+                    _last_indent = 43
                 else:
                     ptxt   = _render_bullet_symbol(prefix) + " "
                     draw.text((PAD_LEFT, y), ptxt, font=f_corpo, fill=cor_p)
@@ -2232,23 +2323,24 @@ def compor_slide_misto_dd(
             else:
                 # Continuação de bullet anterior: indenta sem símbolo
                 draw.text((PAD_LEFT + _last_indent, y), linha, font=f_corpo, fill=(220, 220, 220))
-            y += _lh(draw, linha, f_corpo) + 16
+            y += (_lh(draw, linha, f_corpo) + 16) * 3 // 4
 
         # ── Logo 2: topo direito e bottom left ───────────────────────────────
         if logo_path_2 and logo_path_2.exists():
             l2     = _trim_logo(Image.open(logo_path_2).convert("RGBA"))
-            L2_H   = int(SLIDE_H * 0.14 * 1.6)
+            L2_H   = int(SLIDE_H * 0.14 * 1.6 * 2)   # 2x tamanho
             esc2   = L2_H / l2.height
             L2_W   = max(1, int(l2.width * esc2 * 1.6))
             l2     = l2.resize((L2_W, L2_H), Image.LANCZOS)
             r2, g2, b2, a2 = l2.split()
-            a2 = a2.point(lambda p: int(p * 0.38))
+            a2 = a2.point(lambda p: int(p * 0.18))    # mais transparente
             l2.putalpha(a2)
             base_l2 = canvas.convert("RGBA")
-            # Topo direito — mostra ~65% do logo
-            base_l2.paste(l2, (SLIDE_W - int(L2_W * 0.65), -int(L2_H * 0.35)), l2)
-            # Bottom left — mostra ~65% do logo
-            base_l2.paste(l2, (-int(L2_W * 0.35), SLIDE_H - int(L2_H * 0.65)), l2)
+            # Topo direito — entra mais na imagem (~50% visível)
+            base_l2.paste(l2, (SLIDE_W - int(L2_W * 0.35), -int(L2_H * 0.05)), l2)
+            # Bottom left — rotacionada 15° anti-horário (~50% visível)
+            l2_rot = l2.rotate(15, expand=True)
+            base_l2.paste(l2_rot, (-int(l2_rot.width * 0.50), SLIDE_H - int(l2_rot.height * 0.55)), l2_rot)
             canvas = base_l2.convert("RGB")
 
         return canvas

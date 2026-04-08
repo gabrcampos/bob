@@ -7,7 +7,7 @@ from datetime import datetime
 
 import streamlit as st
 from dotenv import load_dotenv
-from modulos import llm_brain, gerador_imagens, drive
+from modulos import llm_brain, gerador_imagens, drive, db, docs
 
 load_dotenv()
 
@@ -84,93 +84,93 @@ def slugify(texto: str) -> str:
     return texto[:60].strip("_")
 
 
-def salvar_conteudo(conteudo: dict, empresa_id: str, tema: str) -> dict[str, Path]:
-    """Salva carrossel, linkedin e roteiro em pastas separadas. Retorna dict com os paths."""
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = slugify(tema)
-    base = OUTPUTS_DIR / empresa_id
-    paths = {}
-
-    # Carrossel → JSON
-    pasta = base / "carrossel"
-    pasta.mkdir(parents=True, exist_ok=True)
-    path_c = pasta / f"{slug}_{ts}.json"
-    with open(path_c, "w", encoding="utf-8") as f:
-        json.dump({
-            "tema": conteudo["tema"],
-            "empresa": conteudo["empresa"],
-            "publico_alvo": conteudo["publico_alvo"],
-            "slides": conteudo["carrossel"],
-        }, f, ensure_ascii=False, indent=2)
-    paths["carrossel"] = path_c
-
-    # Post LinkedIn → MD
-    pasta = base / "linkedin"
-    pasta.mkdir(parents=True, exist_ok=True)
-    path_l = pasta / f"{slug}_{ts}.md"
-    path_l.write_text(
-        f"# {conteudo['tema']}\n\n{conteudo.get('post_linkedin') or conteudo.get('artigo_linkedin', '')}",
-        encoding="utf-8",
+def salvar_conteudo(
+    conteudo: dict,
+    empresa_id: str,
+    tema: str,
+    empresa_sel: dict,
+    *,
+    opt_linkedin: bool = True,
+    opt_video: bool = True,
+) -> str:
+    """Salva conteúdo padrão no MongoDB. Retorna o _id do documento."""
+    return db.salvar_conteudo(
+        empresa_id=empresa_id,
+        tipo="carrossel",
+        tema=tema,
+        slides=conteudo.get("carrossel", []),
+        legenda=conteudo.get("legenda", ""),
+        post_linkedin=conteudo.get("post_linkedin", "") if opt_linkedin else "",
+        narracao_video=conteudo.get("narracao_video", "") if opt_video else "",
+        empresa_nome=empresa_sel.get("nome", ""),
+        publico_alvo=empresa_sel.get("publico_alvo", ""),
     )
-    paths["linkedin"] = path_l
 
-    # Narração → MD
-    pasta = base / "video"
-    pasta.mkdir(parents=True, exist_ok=True)
-    path_v = pasta / f"{slug}_{ts}.md"
-    path_v.write_text(
-        f"# {conteudo['tema']}\n\n{conteudo.get('narracao_video') or conteudo.get('roteiro_video', '')}",
-        encoding="utf-8",
+
+def salvar_carrossel_tweet(dados: dict, empresa_id: str, tema: str, empresa_sel: dict) -> str:
+    return db.salvar_conteudo(
+        empresa_id=empresa_id,
+        tipo="carrossel_tweet",
+        tema=tema,
+        slides=dados.get("slides", []),
+        legenda=dados.get("legenda", ""),
+        empresa_nome=empresa_sel.get("nome", ""),
+        publico_alvo=empresa_sel.get("publico_alvo", ""),
     )
-    paths["video"] = path_v
-
-    return paths
 
 
-def salvar_carrossel_tweet(slides: list[dict], empresa_id: str, tema: str) -> Path:
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = slugify(tema)
-    pasta = OUTPUTS_DIR / empresa_id / "carrossel_tweet"
-    pasta.mkdir(parents=True, exist_ok=True)
-    path = pasta / f"{slug}_{ts}.json"
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump({"tema": tema, "slides": slides}, f, ensure_ascii=False, indent=2)
-    return path
+def salvar_carrossel_misto_dd(dados: dict, empresa_id: str, tema: str, empresa_sel: dict) -> str:
+    return db.salvar_conteudo(
+        empresa_id=empresa_id,
+        tipo="carrossel_misto_dd",
+        tema=tema,
+        slides=dados.get("slides", []),
+        legenda=dados.get("legenda", ""),
+        empresa_nome=empresa_sel.get("nome", ""),
+        publico_alvo=empresa_sel.get("publico_alvo", ""),
+    )
 
 
-def salvar_carrossel_misto_dd(slides: list[dict], empresa_id: str, tema: str) -> Path:
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = slugify(tema)
-    pasta = OUTPUTS_DIR / empresa_id / "carrossel_misto_dd"
-    pasta.mkdir(parents=True, exist_ok=True)
-    path = pasta / f"{slug}_{ts}.json"
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump({"tema": tema, "slides": slides}, f, ensure_ascii=False, indent=2)
-    return path
+def salvar_linkedin(texto: str, empresa_id: str, tema: str, empresa_sel: dict) -> str:
+    return db.salvar_conteudo(
+        empresa_id=empresa_id,
+        tipo="linkedin",
+        tema=tema,
+        post_linkedin=texto,
+        empresa_nome=empresa_sel.get("nome", ""),
+        publico_alvo=empresa_sel.get("publico_alvo", ""),
+    )
 
 
-def salvar_blog(texto: str, empresa_id: str, tema: str) -> Path:
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = slugify(tema)
-    pasta = OUTPUTS_DIR / empresa_id / "blog"
-    pasta.mkdir(parents=True, exist_ok=True)
-    path = pasta / f"{slug}_{ts}.md"
-    path.write_text(texto, encoding="utf-8")
-    return path
+def salvar_video(texto: str, empresa_id: str, tema: str, empresa_sel: dict) -> str:
+    return db.salvar_conteudo(
+        empresa_id=empresa_id,
+        tipo="video",
+        tema=tema,
+        narracao_video=texto,
+        empresa_nome=empresa_sel.get("nome", ""),
+        publico_alvo=empresa_sel.get("publico_alvo", ""),
+    )
 
 
-def listar_conteudos(empresa_id: str, tipo: str) -> list[Path]:
-    pasta = OUTPUTS_DIR / empresa_id / tipo
-    if not pasta.exists():
-        return []
-    return sorted(pasta.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+def salvar_blog(texto: str, empresa_id: str, tema: str, empresa_sel: dict) -> str:
+    return db.salvar_conteudo(
+        empresa_id=empresa_id,
+        tipo="blog",
+        tema=tema,
+        blog=texto,
+        empresa_nome=empresa_sel.get("nome", ""),
+        publico_alvo=empresa_sel.get("publico_alvo", ""),
+    )
 
 
-def excluir_conteudo(empresa_id: str, stem: str):
-    """Remove todos os arquivos com o mesmo stem em todas as pastas de tipo."""
-    for tipo in TIPOS:
-        for path in (OUTPUTS_DIR / empresa_id / tipo).glob(f"{stem}.*"):
-            path.unlink(missing_ok=True)
+def listar_conteudos(empresa_id: str, tipo: str) -> list[dict]:
+    return db.listar_conteudos(empresa_id, tipo)
+
+
+def excluir_conteudo(conteudo_id: str):
+    """Remove conteúdo e seus agendamentos do banco."""
+    db.excluir_conteudo(conteudo_id)
 
 
 def hex_para_rgb(hex_color: str) -> str | None:
@@ -262,6 +262,55 @@ def _campos_identidade_visual(prefixo: str, iv: dict):
 
 
 # ─────────────────────────────────────────────
+# Checklist de status
+# ─────────────────────────────────────────────
+
+def _checklist_status(doc: dict):
+    """Renderiza a barra de progresso de status de um conteúdo."""
+    status = doc.get("status", {})
+    cid    = doc["_id"]
+
+    etapas = [
+        ("slides_gerados",  "Slides",   "✅" if status.get("slides_gerados")  else "⬜"),
+        ("imagens_geradas", "Imagens",  "✅" if status.get("imagens_geradas") else "⬜"),
+        ("drive_enviado",   "Drive",    "✅" if status.get("drive_enviado")   else "⬜"),
+        ("aprovado",        "Aprovado", "✅" if doc.get("aprovado")           else "⬜"),
+        ("agendado",        "Agendado", "✅" if status.get("agendado")        else "⬜"),
+        ("publicado",       "Publicado","✅" if status.get("publicado")       else "⬜"),
+    ]
+
+    concluidas = sum(1 for _, _, icone in etapas if icone == "✅")
+    progresso  = concluidas / len(etapas)
+
+    st.progress(progresso)
+
+    cols = st.columns(len(etapas))
+    for col, (campo, label, icone) in zip(cols, etapas):
+        col.markdown(
+            f"<div style='text-align:center;font-size:18px'>{icone}</div>"
+            f"<div style='text-align:center;font-size:11px;color:gray'>{label}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Botão de aprovação inline
+    if not doc.get("aprovado"):
+        if st.button("✔ Marcar como aprovado", key=f"aprovar_{cid}", type="secondary"):
+            db.atualizar_conteudo(cid, {"aprovado": True})
+            st.rerun()
+    else:
+        if st.button("↩ Remover aprovação", key=f"desaprovar_{cid}"):
+            db.atualizar_conteudo(cid, {"aprovado": False})
+            st.rerun()
+
+    # Link do Drive se disponível
+    drive_link = status.get("drive_link")
+    if drive_link:
+        st.caption(f"📁 [Abrir no Drive]({drive_link})")
+
+    st.divider()
+
+
+# ─────────────────────────────────────────────
 # Layout
 # ─────────────────────────────────────────────
 
@@ -311,73 +360,194 @@ with aba_gerar:
         arquivos = listar_arquivos(empresa_sel["id"])
         col_info2.caption(f"Site: {url if url else '—'} · Arquivos: {len(arquivos)}")
 
-        tema = st.text_input("Tema do conteúdo", placeholder="Ex: Integração de sistemas legados com e-commerce")
-
         ctx_existente = llm_brain.carregar_contexto_compilado(empresa_sel["id"])
         if not ctx_existente:
             st.warning("Contexto editorial não processado. Vá até a aba **Empresas** e clique em **Processar Contexto** antes de gerar.")
 
+        # ── Sugestão de temas ─────────────────────────────────────────────────
+        _key_sugestoes = f"sugestoes_{empresa_sel['id']}"
+
+        _col_sug, _col_limpar = st.columns([3, 1])
+        if _col_sug.button("💡 Sugerir 10 temas", key="btn_sugerir", width='stretch', disabled=not ctx_existente):
+            with st.spinner("Buscando tendências e sugerindo temas..."):
+                try:
+                    sugestoes = llm_brain.sugerir_temas(
+                        empresa=empresa_sel["nome"],
+                        empresa_id=empresa_sel["id"],
+                        publico_alvo=empresa_sel["publico_alvo"],
+                        url_site=empresa_sel.get("url_site", ""),
+                    )
+                    st.session_state[_key_sugestoes] = sugestoes
+                    st.session_state[f"sel_{_key_sugestoes}"] = []
+                except Exception as e:
+                    st.error(f"Erro ao sugerir temas: {e}")
+
+        if _key_sugestoes in st.session_state and _col_limpar.button("✕ Limpar", key="btn_limpar_sug"):
+            del st.session_state[_key_sugestoes]
+            st.session_state.pop(f"sel_{_key_sugestoes}", None)
+
+        temas_selecionados: list[str] = []
+        if _key_sugestoes in st.session_state:
+            st.caption("Selecione os temas que deseja gerar:")
+            sugestoes_lista = st.session_state[_key_sugestoes]
+            _sel_key = f"sel_{_key_sugestoes}"
+            selecionados = st.session_state.get(_sel_key, [])
+            for i, sugestao in enumerate(sugestoes_lista):
+                checked = st.checkbox(sugestao, value=(sugestao in selecionados), key=f"ck_sug_{empresa_sel['id']}_{i}")
+                if checked and sugestao not in selecionados:
+                    selecionados.append(sugestao)
+                elif not checked and sugestao in selecionados:
+                    selecionados.remove(sugestao)
+            st.session_state[_sel_key] = selecionados
+            temas_selecionados = selecionados
+
+        st.caption("Ou escreva um tema manualmente:")
+        tema = st.text_input("Tema do conteúdo", placeholder="Ex: Integração de sistemas legados com e-commerce", label_visibility="collapsed")
+
+        # Combina: temas selecionados + tema manual (se preenchido)
+        _todos_temas = temas_selecionados + ([tema.strip()] if tema.strip() and tema.strip() not in temas_selecionados else [])
+
+        st.caption("Conteúdos adicionais")
+        ck1, ck2, ck3 = st.columns(3)
+        opt_linkedin = ck1.checkbox("Post LinkedIn", value=True,  key="opt_linkedin")
+        opt_video    = ck2.checkbox("Narração Vídeo", value=True, key="opt_video")
+        opt_blog     = ck3.checkbox("Blog",           value=False, key="opt_blog")
+
         col_btn1, col_btn2 = st.columns(2)
 
-        if col_btn1.button("Gerar conteúdo", type="primary", disabled=not tema.strip(), use_container_width=True):
-            with st.spinner("Gerando com Gemini..."):
-                try:
-                    conteudo = llm_brain.gerar_conteudo(
-                        tema=tema.strip(),
-                        empresa=empresa_sel["nome"],
-                        empresa_id=empresa_sel["id"],
-                        publico_alvo=empresa_sel["publico_alvo"],
+        def _gerar_adicionais(tema_str: str, slides: list[dict]):
+            """Gera e salva linkedin, vídeo e/ou blog conforme checkboxes."""
+            if opt_linkedin:
+                with st.spinner(f"Gerando Post LinkedIn — {tema_str[:40]}..."):
+                    txt = llm_brain.gerar_linkedin(
+                        tema=tema_str, empresa=empresa_sel["nome"],
+                        empresa_id=empresa_sel["id"], publico_alvo=empresa_sel["publico_alvo"],
+                        url_site=empresa_sel.get("url_site", ""), slides=slides,
+                    )
+                    salvar_linkedin(txt, empresa_sel["id"], tema_str, empresa_sel)
+            if opt_video:
+                with st.spinner(f"Gerando Narração Vídeo — {tema_str[:40]}..."):
+                    txt = llm_brain.gerar_narracao(
+                        tema=tema_str, empresa=empresa_sel["nome"],
+                        empresa_id=empresa_sel["id"], publico_alvo=empresa_sel["publico_alvo"],
                         url_site=empresa_sel.get("url_site", ""),
                     )
-                except Exception as e:
-                    st.error(f"Erro ao gerar conteúdo: {e}")
-                    st.stop()
+                    salvar_video(txt, empresa_sel["id"], tema_str, empresa_sel)
+            if opt_blog:
+                with st.spinner(f"Gerando Blog — {tema_str[:40]}..."):
+                    txt = llm_brain.gerar_blog(
+                        tema=tema_str, empresa=empresa_sel["nome"],
+                        empresa_id=empresa_sel["id"], publico_alvo=empresa_sel["publico_alvo"],
+                        url_site=empresa_sel.get("url_site", ""),
+                    )
+                    salvar_blog(txt, empresa_sel["id"], tema_str, empresa_sel)
 
-            paths = salvar_conteudo(conteudo, empresa_sel["id"], tema.strip())
+        _sem_temas = not _todos_temas
+        _label_btn1 = f"Gerar Conteúdo Padrão ({len(_todos_temas)})" if len(_todos_temas) > 1 else "Gerar Conteúdo Padrão"
+        _label_btn2 = f"Gerar Carrossel Tweet ({len(_todos_temas)})" if len(_todos_temas) > 1 else "Gerar Carrossel Tweet"
+
+        if col_btn1.button(_label_btn1, type="primary", disabled=_sem_temas, width='stretch'):
+            ultimo_conteudo = None
+            barra_lote = st.progress(0) if len(_todos_temas) > 1 else None
+            for idx_t, tema_str in enumerate(_todos_temas):
+                with st.spinner(f"Gerando Conteúdo Padrão — {tema_str[:50]}... ({idx_t+1}/{len(_todos_temas)})"):
+                    try:
+                        conteudo = llm_brain.gerar_conteudo(
+                            tema=tema_str,
+                            empresa=empresa_sel["nome"],
+                            empresa_id=empresa_sel["id"],
+                            publico_alvo=empresa_sel["publico_alvo"],
+                            url_site=empresa_sel.get("url_site", ""),
+                        )
+                    except Exception as e:
+                        st.error(f"Erro em '{tema_str[:40]}': {e}")
+                        continue
+                salvar_conteudo(
+                    conteudo, empresa_sel["id"], tema_str, empresa_sel,
+                    opt_linkedin=opt_linkedin, opt_video=opt_video,
+                )
+                if opt_blog:
+                    try:
+                        blog_txt = llm_brain.gerar_blog(
+                            tema=tema_str, empresa=empresa_sel["nome"],
+                            empresa_id=empresa_sel["id"], publico_alvo=empresa_sel["publico_alvo"],
+                            url_site=empresa_sel.get("url_site", ""),
+                        )
+                        salvar_blog(blog_txt, empresa_sel["id"], tema_str, empresa_sel)
+                    except Exception as e:
+                        st.warning(f"Blog não gerado para '{tema_str[:40]}': {e}")
+                ultimo_conteudo = conteudo
+                if barra_lote:
+                    barra_lote.progress((idx_t + 1) / len(_todos_temas))
+            if barra_lote:
+                barra_lote.empty()
+            gerados_labels = ["carrossel"] + (["linkedin"] if opt_linkedin else []) + (["vídeo"] if opt_video else []) + (["blog"] if opt_blog else [])
+            st.success(f"{len(_todos_temas)} tema(s) gerado(s): {', '.join(gerados_labels)}")
             st.session_state.pop("blog_atual", None)
-            st.success(f"Salvo em `outputs/{empresa_sel['id']}/` (carrossel, linkedin, vídeo)")
-            st.session_state["conteudo_atual"] = conteudo
+            if ultimo_conteudo:
+                st.session_state["conteudo_atual"] = ultimo_conteudo
 
-        if col_btn2.button("Gerar Carrossel Tweet", disabled=not tema.strip(), use_container_width=True):
-            with st.spinner("Gerando Carrossel Tweet com Gemini..."):
-                try:
-                    slides_tweet = llm_brain.gerar_carrossel_tweet(
-                        tema=tema.strip(),
-                        empresa=empresa_sel["nome"],
-                        empresa_id=empresa_sel["id"],
-                        publico_alvo=empresa_sel["publico_alvo"],
-                        url_site=empresa_sel.get("url_site", ""),
-                    )
-                except Exception as e:
-                    st.error(f"Erro ao gerar Carrossel Tweet: {e}")
-                    st.stop()
-            path_tweet = salvar_carrossel_tweet(slides_tweet, empresa_sel["id"], tema.strip())
-            st.success(f"Carrossel Tweet salvo em `{path_tweet}`")
-            st.session_state["tweet_slides_atual"] = slides_tweet
+        if col_btn2.button(_label_btn2, disabled=_sem_temas, width='stretch'):
+            barra_lote_tw = st.progress(0) if len(_todos_temas) > 1 else None
+            ultimo_tweet = None
+            for idx_t, tema_str in enumerate(_todos_temas):
+                with st.spinner(f"Gerando Carrossel Tweet — {tema_str[:50]}... ({idx_t+1}/{len(_todos_temas)})"):
+                    try:
+                        slides_tweet = llm_brain.gerar_carrossel_tweet(
+                            tema=tema_str,
+                            empresa=empresa_sel["nome"],
+                            empresa_id=empresa_sel["id"],
+                            publico_alvo=empresa_sel["publico_alvo"],
+                            url_site=empresa_sel.get("url_site", ""),
+                        )
+                    except Exception as e:
+                        st.error(f"Erro em '{tema_str[:40]}': {e}")
+                        continue
+                salvar_carrossel_tweet(slides_tweet, empresa_sel["id"], tema_str, empresa_sel)
+                _gerar_adicionais(tema_str, slides_tweet.get("slides", []))
+                if barra_lote_tw:
+                    barra_lote_tw.progress((idx_t + 1) / len(_todos_temas))
+                ultimo_tweet = slides_tweet
+            if barra_lote_tw:
+                barra_lote_tw.empty()
+            st.success(f"{len(_todos_temas)} Carrossel(is) Tweet gerado(s).")
+            if _todos_temas:
+                st.session_state["tweet_slides_atual"] = ultimo_tweet
 
-        if st.button("Gerar Carrossel Misto DD", disabled=not tema.strip(), use_container_width=True):
-            with st.spinner("Gerando Carrossel Misto DD com Gemini..."):
-                try:
-                    slides_mdd = llm_brain.gerar_carrossel_misto_dd(
-                        tema=tema.strip(),
-                        empresa=empresa_sel["nome"],
-                        empresa_id=empresa_sel["id"],
-                        publico_alvo=empresa_sel["publico_alvo"],
-                        url_site=empresa_sel.get("url_site", ""),
-                    )
-                except Exception as e:
-                    st.error(f"Erro ao gerar Carrossel Misto DD: {e}")
-                    st.stop()
-            path_mdd = salvar_carrossel_misto_dd(slides_mdd, empresa_sel["id"], tema.strip())
-            st.success(f"Carrossel Misto DD salvo em `{path_mdd}`")
-            st.session_state["misto_dd_slides_atual"] = slides_mdd
+        _label_btn3 = f"Gerar Carrossel Misto DD ({len(_todos_temas)})" if len(_todos_temas) > 1 else "Gerar Carrossel Misto DD"
+        if st.button(_label_btn3, disabled=_sem_temas, width='stretch'):
+            barra_lote_mdd = st.progress(0) if len(_todos_temas) > 1 else None
+            ultimo_mdd = None
+            for idx_t, tema_str in enumerate(_todos_temas):
+                with st.spinner(f"Gerando Carrossel Misto DD — {tema_str[:50]}... ({idx_t+1}/{len(_todos_temas)})"):
+                    try:
+                        slides_mdd = llm_brain.gerar_carrossel_misto_dd(
+                            tema=tema_str,
+                            empresa=empresa_sel["nome"],
+                            empresa_id=empresa_sel["id"],
+                            publico_alvo=empresa_sel["publico_alvo"],
+                            url_site=empresa_sel.get("url_site", ""),
+                        )
+                    except Exception as e:
+                        st.error(f"Erro em '{tema_str[:40]}': {e}")
+                        continue
+                salvar_carrossel_misto_dd(slides_mdd, empresa_sel["id"], tema_str, empresa_sel)
+                _gerar_adicionais(tema_str, slides_mdd.get("slides", []))
+                if barra_lote_mdd:
+                    barra_lote_mdd.progress((idx_t + 1) / len(_todos_temas))
+                ultimo_mdd = slides_mdd
+            if barra_lote_mdd:
+                barra_lote_mdd.empty()
+            st.success(f"{len(_todos_temas)} Carrossel(is) Misto DD gerado(s).")
+            if ultimo_mdd:
+                st.session_state["misto_dd_slides_atual"] = ultimo_mdd
 
         conteudo = st.session_state.get("conteudo_atual")
         if conteudo:
             st.divider()
 
             sub_c, sub_li, sub_vid, sub_blog = st.tabs(
-                ["Carrossel", "Post LinkedIn", "Narração Vídeo", "Blog"]
+                ["Conteúdo Padrão", "Post LinkedIn", "Narração Vídeo", "Blog"]
             )
 
             with sub_c:
@@ -414,9 +584,9 @@ with aba_gerar:
                             except Exception as e:
                                 st.error(f"Erro ao gerar blog: {e}")
                                 st.stop()
-                        path_blog = salvar_blog(blog_texto, empresa_sel["id"], conteudo["tema"])
+                        salvar_blog(blog_texto, empresa_sel["id"], conteudo["tema"], empresa_sel)
                         st.session_state["blog_atual"] = blog_texto
-                        st.success(f"Blog salvo em `{path_blog}`")
+                        st.success("Blog salvo.")
                         st.rerun()
 
         tweet_slides = st.session_state.get("tweet_slides_atual")
@@ -696,7 +866,7 @@ with aba_empresas:
 # ─────────────────────────────────────────────
 
 TIPOS = {
-    "carrossel":          "Carrossel",
+    "carrossel":          "Conteúdo Padrão",
     "carrossel_tweet":    "Carrossel Tweet",
     "carrossel_misto_dd": "Carrossel Misto DD",
     "linkedin":           "Post LinkedIn",
@@ -711,184 +881,165 @@ with aba_conteudos:
         st.info("Nenhuma empresa cadastrada.")
     else:
         for emp in empresas:
-            # Verifica se há algum conteúdo para esta empresa
-            tem_conteudo = any(
-                listar_conteudos(emp["id"], tipo) for tipo in TIPOS
-            )
-            total = sum(len(listar_conteudos(emp["id"], t)) for t in TIPOS)
+            contagens = db.contar_conteudos(emp["id"])
+            total = sum(contagens.values())
             label = f"{emp['nome']}  —  {total} conteúdo(s)" if total else emp["nome"]
 
-            with st.expander(label, expanded=tem_conteudo and len(empresas) == 1):
-                if not tem_conteudo:
+            with st.expander(label, expanded=bool(total) and len(empresas) == 1):
+                if not total:
                     st.caption("Nenhum conteúdo gerado ainda.")
                     continue
 
-                sub_carrossel, sub_tweet, sub_misto_dd, sub_linkedin, sub_video, sub_blog = st.tabs(
-                    [TIPOS["carrossel"], TIPOS["carrossel_tweet"], TIPOS["carrossel_misto_dd"],
-                     TIPOS["linkedin"], TIPOS["video"], TIPOS["blog"]]
-                )
+                # ── Google Doc — Posts LinkedIn + Narração ────────────
+                _gdoc_key = f"gdoc_url_{emp['id']}"
+                _col_gdoc, _col_gdoc_link = st.columns([2, 3])
+                if _col_gdoc.button("📄 Gerar Google Doc (LinkedIn + Vídeo)", key=f"gdoc_{emp['id']}", width='stretch'):
+                    with st.spinner("Criando Google Doc..."):
+                        try:
+                            folder_id_gdoc = emp.get("drive_folder_id") or ""
+                            _doc_id, _doc_url = docs.criar_doc_posts(
+                                empresa_id=emp["id"],
+                                empresa_nome=emp["nome"],
+                                folder_id=folder_id_gdoc or None,
+                            )
+                            st.session_state[_gdoc_key] = _doc_url
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao criar doc: {e}")
+                if st.session_state.get(_gdoc_key):
+                    _col_gdoc_link.markdown(f"📝 [Abrir documento]({st.session_state[_gdoc_key]})")
 
-                def _botao_excluir(emp_id: str, stem: str, tipo: str):
-                    if st.button("Excluir", key=f"del_{tipo}_{emp_id}_{stem}", type="secondary"):
-                        excluir_conteudo(emp_id, stem)
-                        st.success("Conteúdo excluído.")
-                        st.rerun()
+                def _tab_label(tipo: str) -> str:
+                    n = contagens.get(tipo, 0)
+                    return f"{TIPOS[tipo]} ({n})" if n else TIPOS[tipo]
 
-                def _listar_md(tipo: str, altura: int, prefixo: str, fn_regenerar=None):
-                    arquivos = listar_conteudos(emp["id"], tipo)
-                    if not arquivos:
+                sub_carrossel, sub_tweet, sub_misto_dd, sub_linkedin, sub_video, sub_blog = st.tabs([
+                    _tab_label("carrossel"), _tab_label("carrossel_tweet"), _tab_label("carrossel_misto_dd"),
+                    _tab_label("linkedin"),  _tab_label("video"),           _tab_label("blog"),
+                ])
+
+                def _listar_md(tipo: str, campo: str, altura: int, prefixo: str, fn_regenerar=None):
+                    docs = listar_conteudos(emp["id"], tipo)
+                    if not docs:
                         st.caption("Nenhum conteúdo gerado ainda.")
                         return
-                    for path in arquivos:
-                        data  = datetime.fromtimestamp(path.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
-                        texto = path.read_text(encoding="utf-8")
-                        linhas = texto.splitlines()
-                        tema_arq = linhas[0].lstrip("# ") if linhas else path.stem
-                        corpo    = "\n".join(linhas[2:]) if len(linhas) > 2 else texto
-                        with st.expander(f"{tema_arq}  ·  {data}"):
+                    for doc in docs:
+                        cid  = doc["_id"]
+                        data = doc["criado_em"].strftime("%d/%m/%Y %H:%M") if doc.get("criado_em") else "—"
+                        corpo = doc.get(campo, "")
+                        with st.expander(f"{doc['tema']}  ·  {data}"):
                             btn_cols = st.columns([1, 1, 5]) if fn_regenerar else st.columns([1, 6])
-                            if btn_cols[0].button("Excluir", key=f"del_{tipo}_{emp['id']}_{path.stem}", type="secondary"):
-                                excluir_conteudo(emp["id"], path.stem)
-                                st.success("Conteúdo excluído.")
+                            if btn_cols[0].button("Excluir", key=f"del_{tipo}_{emp['id']}_{cid}", type="secondary"):
+                                excluir_conteudo(cid)
+                                st.success("Excluído.")
                                 st.rerun()
-                            if fn_regenerar and btn_cols[1].button("↺ Regenerar", key=f"regen_{tipo}_{path.stem}"):
+                            if fn_regenerar and btn_cols[1].button("↺ Regenerar", key=f"regen_{tipo}_{cid}"):
                                 with st.spinner("Regenerando..."):
                                     try:
-                                        novo = fn_regenerar(tema_arq)
-                                        path.write_text(f"# {tema_arq}\n\n{novo}", encoding="utf-8")
+                                        novo = fn_regenerar(doc["tema"])
+                                        db.atualizar_conteudo(cid, {campo: novo})
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erro: {e}")
-                            st.text_area(" ", corpo, height=altura, key=f"{prefixo}_{path.stem}", label_visibility="collapsed")
+                            st.text_area(" ", corpo, height=altura, key=f"{prefixo}_{cid}", label_visibility="collapsed")
 
                 with sub_carrossel:
-                    arquivos = listar_conteudos(emp["id"], "carrossel")
-                    if not arquivos:
+                    docs_c = listar_conteudos(emp["id"], "carrossel")
+                    if not docs_c:
                         st.caption("Nenhum carrossel gerado.")
-                    for path in arquivos:
-                        data = datetime.fromtimestamp(path.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
-                        with open(path, encoding="utf-8") as f:
-                            dados = json.load(f)
-                        tema_arq = dados.get("tema", path.stem)
-                        with st.expander(f"{tema_arq}  ·  {data}"):
+                    for doc in docs_c:
+                        cid  = doc["_id"]
+                        stem = doc.get("stem", cid)
+                        data = doc["criado_em"].strftime("%d/%m/%Y %H:%M") if doc.get("criado_em") else "—"
+                        with st.expander(f"{doc['tema']}  ·  {data}"):
+                            _checklist_status(doc)
                             col_del, col_regen_texto, _esp = st.columns([1, 2, 3])
-                            if col_del.button("Excluir", key=f"del_carrossel_{emp['id']}_{path.stem}", type="secondary"):
-                                excluir_conteudo(emp["id"], path.stem)
-                                st.success("Conteúdo excluído.")
+                            if col_del.button("Excluir", key=f"del_c_{emp['id']}_{cid}", type="secondary"):
+                                excluir_conteudo(cid)
+                                st.success("Excluído.")
                                 st.rerun()
-                            if col_regen_texto.button("↺ Regenerar texto", key=f"regen_slides_{path.stem}", use_container_width=True):
+                            if col_regen_texto.button("↺ Regenerar texto", key=f"regen_c_{cid}", width='stretch'):
                                 with st.spinner("Regenerando carrossel..."):
                                     try:
-                                        novos_slides = llm_brain.gerar_slides_carrossel(
-                                            tema=dados.get("tema", ""),
-                                            empresa=dados.get("empresa", emp["nome"]),
+                                        novos = llm_brain.gerar_slides_carrossel(
+                                            tema=doc["tema"],
+                                            empresa=doc.get("empresa_nome", emp["nome"]),
                                             empresa_id=emp["id"],
-                                            publico_alvo=dados.get("publico_alvo", emp["publico_alvo"]),
+                                            publico_alvo=doc.get("publico_alvo", emp["publico_alvo"]),
                                             url_site=emp.get("url_site", ""),
                                         )
-                                        dados["slides"] = novos_slides
-                                        with open(path, "w", encoding="utf-8") as _f:
-                                            json.dump(dados, _f, ensure_ascii=False, indent=2)
+                                        db.atualizar_conteudo(cid, {"slides": novos})
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erro: {e}")
 
-                            # ── Imagens ──────────────────────────────
-                            imagens = gerador_imagens.listar_imagens(emp["id"], path.stem)
-                            iv = {
-                                **emp.get("identidade_visual", {}),
-                                "estilo_imagem": emp.get("estilo_imagem", ""),
-                                "url_site": emp.get("url_site", ""),
-                            }
+                            imagens = gerador_imagens.listar_imagens(emp["id"], stem)
+                            iv = {**emp.get("identidade_visual", {}), "estilo_imagem": emp.get("estilo_imagem", ""), "url_site": emp.get("url_site", "")}
 
-                            # Seletor de logo (mostra apenas se houver 2ª logo cadastrada)
                             _logo_idx = 1
                             if gerador_imagens.logo_empresa(emp["id"], 2):
                                 _logos_opts = ["Logo 1 (principal)", "Logo 2 (alternativa)"]
-                                _logo_sel = st.radio(
-                                    "Logo",
-                                    _logos_opts,
-                                    horizontal=True,
-                                    key=f"logo_radio_{path.stem}",
-                                    label_visibility="collapsed",
-                                )
+                                _logo_sel = st.radio("Logo", _logos_opts, horizontal=True, key=f"logo_c_{cid}", label_visibility="collapsed")
                                 _logo_idx = 2 if _logo_sel == _logos_opts[1] else 1
+
+                            _leg = doc.get("legenda", "")
+                            _col_leg, _col_gerar_leg = st.columns([4, 1])
+                            with _col_leg:
+                                _nova_leg = st.text_area("Legenda", value=_leg, key=f"leg_c_{cid}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
+                            with _col_gerar_leg:
+                                if st.button("✨ Gerar legenda", key=f"gerar_leg_c_{cid}", width='stretch'):
+                                    with st.spinner("Gerando..."):
+                                        try:
+                                            _nova_leg = llm_brain.gerar_legenda(doc["tema"], doc.get("empresa_nome", emp["nome"]), emp["id"], doc.get("publico_alvo", emp["publico_alvo"]), doc.get("slides", []))
+                                            db.atualizar_conteudo(cid, {"legenda": _nova_leg})
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
+                                if _nova_leg != _leg:
+                                    if st.button("💾 Salvar legenda", key=f"sv_leg_c_{cid}", width='stretch'):
+                                        db.atualizar_conteudo(cid, {"legenda": _nova_leg})
+                                        st.success("Legenda salva.")
 
                             if imagens:
                                 col_cap, col_baixar, col_drive, col_regen = st.columns([2, 1, 1, 1])
                                 col_cap.caption(f"{len(imagens)} imagem(ns) gerada(s)")
-                                regenerar_tudo = col_regen.button("↺ Regenerar tudo", key=f"regen_img_{path.stem}", use_container_width=True)
-
+                                regenerar_tudo = col_regen.button("↺ Regenerar tudo", key=f"regen_img_c_{cid}", width='stretch')
                                 folder_id = emp.get("drive_folder_id", "") or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
-                                if col_drive.button("📤 Drive", key=f"drive_{path.stem}", use_container_width=True, disabled=not folder_id):
-                                    with st.spinner("Enviando para o Google Drive..."):
+                                if col_drive.button("📤 Drive", key=f"drive_c_{cid}", width='stretch', disabled=not folder_id):
+                                    with st.spinner("Enviando..."):
                                         try:
-                                            resultados, nome_pasta = drive.enviar_carrossel_drive(imagens, folder_id)
-                                            st.success(f"{len(resultados)} imagens enviadas para a pasta **{nome_pasta}** no Drive!")
+                                            resultados, nome_pasta, folder_link = drive.enviar_carrossel_drive(imagens, folder_id)
+                                            db.marcar_drive_enviado(cid, folder_link)
+                                            st.success(f"{len(resultados)} imagens enviadas para **{nome_pasta}**!")
                                         except Exception as e:
-                                            st.error(f"Erro ao enviar para o Drive: {e}")
+                                            st.error(f"Erro: {e}")
                                 if not folder_id:
                                     col_drive.caption("Configure o ID da pasta na aba Empresas")
-
                                 zip_buf = io.BytesIO()
                                 with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                                    for idx, img_path in enumerate(imagens):
-                                        zf.write(img_path, arcname=f"{idx + 1}.png")
+                                    for idx, ip in enumerate(imagens):
+                                        zf.write(ip, arcname=f"{idx+1}.png")
                                 zip_buf.seek(0)
-                                col_baixar.download_button(
-                                    label="↓ Baixar tudo",
-                                    data=zip_buf,
-                                    file_name=f"{path.stem}.zip",
-                                    mime="application/zip",
-                                    key=f"dl_zip_{path.stem}",
-                                    use_container_width=True,
-                                )
+                                col_baixar.download_button("↓ Baixar tudo", data=zip_buf, file_name=f"{stem}.zip", mime="application/zip", key=f"dl_zip_c_{cid}", width='stretch')
                                 cols = st.columns(3)
                                 for idx, img_path in enumerate(imagens):
                                     slide_n = int(img_path.stem.split("_")[-1])
                                     with cols[idx % 3]:
-                                        st.image(str(img_path), use_container_width=True)
+                                        st.image(str(img_path), width='stretch')
                                         col_dl, col_rs = st.columns(2)
                                         with open(img_path, "rb") as img_f:
-                                            col_dl.download_button(
-                                                label="↓ Baixar",
-                                                data=img_f.read(),
-                                                file_name=img_path.name,
-                                                mime="image/png",
-                                                key=f"dl_{path.stem}_{idx}",
-                                                use_container_width=True,
-                                            )
-                                        # Selectbox de estilo para slides com variante
+                                            col_dl.download_button("↓ Baixar", data=img_f.read(), file_name=img_path.name, mime="image/png", key=f"dl_c_{cid}_{idx}", width='stretch')
                                         _variante_sel = None
                                         if slide_n in _OPCOES_ESTILO_SLIDE:
                                             _nomes = [o[0] for o in _OPCOES_ESTILO_SLIDE[slide_n]]
                                             _vals  = {o[0]: o[1] for o in _OPCOES_ESTILO_SLIDE[slide_n]}
-                                            _sel   = st.selectbox(
-                                                "Estilo",
-                                                _nomes,
-                                                key=f"est_{path.stem}_{slide_n}",
-                                                label_visibility="collapsed",
-                                            )
-                                            _variante_sel = _vals[_sel]
-
-                                        if col_rs.button("↺ Slide", key=f"regen_slide_{path.stem}_{idx}", use_container_width=True):
-                                            slide_data = next(
-                                                (s for s in dados.get("slides", []) if s.get("slide") == slide_n),
-                                                None,
-                                            )
+                                            _variante_sel = _vals[st.selectbox("Estilo", _nomes, key=f"est_c_{cid}_{slide_n}", label_visibility="collapsed")]
+                                        if col_rs.button("↺ Slide", key=f"rs_c_{cid}_{idx}", width='stretch'):
+                                            slide_data = next((s for s in doc.get("slides", []) if s.get("slide") == slide_n), None)
                                             if slide_data:
                                                 with st.spinner(f"Regenerando slide {slide_n}..."):
                                                     try:
-                                                        total_slides = len(dados.get("slides", []))
-                                                        gerador_imagens.gerar_imagem_slide(
-                                                            slide=slide_data,
-                                                            empresa_id=emp["id"],
-                                                            stem=path.stem,
-                                                            identidade_visual=iv,
-                                                            is_ultimo=(slide_n == total_slides),
-                                                            variante_override=_variante_sel,
-                                                            logo_index=_logo_idx,
-                                                        )
+                                                        gerador_imagens.gerar_imagem_slide(slide=slide_data, empresa_id=emp["id"], stem=stem, identidade_visual=iv, is_ultimo=(slide_n == len(doc.get("slides", []))), variante_override=_variante_sel, logo_index=_logo_idx)
                                                         st.rerun()
                                                     except Exception as e:
                                                         st.error(f"Erro: {e}")
@@ -896,26 +1047,14 @@ with aba_conteudos:
                                 regenerar_tudo = False
 
                             if not imagens or regenerar_tudo:
-                                if regenerar_tudo or st.button("Gerar Imagens", key=f"gen_img_{path.stem}", type="primary"):
-                                    slides = dados.get("slides", [])
-                                    barra  = st.progress(0, text="Iniciando...")
-                                    status = st.empty()
-
-                                    def _progresso(n, total):
-                                        barra.progress(n / total, text=f"Gerando slide {n} de {total}...")
-                                        status.caption(f"Slide {n}/{total} concluído.")
-
+                                if regenerar_tudo or st.button("Gerar Imagens", key=f"gen_img_c_{cid}", type="primary"):
+                                    barra = st.progress(0, text="Iniciando...")
+                                    status_el = st.empty()
+                                    def _prog(n, total): barra.progress(n/total, text=f"Slide {n}/{total}..."); status_el.caption(f"Slide {n}/{total}")
                                     try:
-                                        gerador_imagens.gerar_imagens_carrossel(
-                                            slides=slides,
-                                            empresa_id=emp["id"],
-                                            stem=path.stem,
-                                            identidade_visual=iv,
-                                            callback=_progresso,
-                                            logo_index=_logo_idx,
-                                        )
-                                        barra.empty()
-                                        status.empty()
+                                        gerador_imagens.gerar_imagens_carrossel(slides=doc.get("slides", []), empresa_id=emp["id"], stem=stem, identidade_visual=iv, callback=_prog, logo_index=_logo_idx)
+                                        db.marcar_imagens_geradas(cid)
+                                        barra.empty(); status_el.empty()
                                         st.success("Imagens geradas!")
                                         st.rerun()
                                     except Exception as e:
@@ -923,124 +1062,112 @@ with aba_conteudos:
 
                             st.divider()
                             st.caption("Slides (texto)")
-                            for slide in dados.get("slides", []):
-                                st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
-                                st.write(slide["texto"])
+                            slides_editados = list(doc.get("slides", []))
+                            for i, slide in enumerate(slides_editados):
+                                _sk = f"c_{cid}_{slide['slide']}"
+                                st.caption(f"Slide {slide['slide']}")
+                                slides_editados[i]["titulo"] = st.text_input("Título", value=slide["titulo"], key=f"tit_{_sk}", label_visibility="collapsed", placeholder="Título")
+                                slides_editados[i]["texto"]  = st.text_area("Texto",  value=slide["texto"],  key=f"txt_{_sk}", label_visibility="collapsed", placeholder="Texto", height=100)
                                 if slide.get("prompt_imagem"):
-                                    st.caption(f"🖼️ Imagem: {slide['prompt_imagem']}")
+                                    st.caption(f"🖼️ {slide['prompt_imagem']}")
+                                if st.button("💾 Salvar slide", key=f"sv_{_sk}", width='content'):
+                                    db.atualizar_conteudo(cid, {"slides": slides_editados})
+                                    st.success(f"Slide {slide['slide']} salvo.")
+                                    st.rerun()
                                 st.divider()
 
                 with sub_tweet:
-                    arquivos_tw = listar_conteudos(emp["id"], "carrossel_tweet")
-                    if not arquivos_tw:
+                    docs_tw = listar_conteudos(emp["id"], "carrossel_tweet")
+                    if not docs_tw:
                         st.caption("Nenhum Carrossel Tweet gerado.")
-                    for path_tw in arquivos_tw:
-                        data_tw = datetime.fromtimestamp(path_tw.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
-                        with open(path_tw, encoding="utf-8") as f_tw:
-                            dados_tw = json.load(f_tw)
-                        tema_tw = dados_tw.get("tema", path_tw.stem)
-                        with st.expander(f"{tema_tw}  ·  {data_tw}"):
+                    for doc_tw in docs_tw:
+                        cid_tw  = doc_tw["_id"]
+                        stem_tw = doc_tw.get("stem", cid_tw)
+                        data_tw = doc_tw["criado_em"].strftime("%d/%m/%Y %H:%M") if doc_tw.get("criado_em") else "—"
+                        with st.expander(f"{doc_tw['tema']}  ·  {data_tw}"):
+                            _checklist_status(doc_tw)
                             col_del_tw, col_regen_tw, _esp_tw = st.columns([1, 2, 3])
-                            if col_del_tw.button("Excluir", key=f"del_tweet_{emp['id']}_{path_tw.stem}", type="secondary"):
-                                excluir_conteudo(emp["id"], path_tw.stem)
-                                st.success("Conteúdo excluído.")
+                            if col_del_tw.button("Excluir", key=f"del_tw_{emp['id']}_{cid_tw}", type="secondary"):
+                                excluir_conteudo(cid_tw)
+                                st.success("Excluído.")
                                 st.rerun()
-                            if col_regen_tw.button("↺ Regenerar texto", key=f"regen_tweet_{path_tw.stem}", use_container_width=True):
+                            if col_regen_tw.button("↺ Regenerar texto", key=f"regen_tw_{cid_tw}", width='stretch'):
                                 with st.spinner("Regenerando..."):
                                     try:
-                                        novos_tw = llm_brain.gerar_carrossel_tweet(
-                                            tema=tema_tw,
-                                            empresa=emp["nome"],
-                                            empresa_id=emp["id"],
-                                            publico_alvo=emp["publico_alvo"],
-                                            url_site=emp.get("url_site", ""),
-                                        )
-                                        dados_tw["slides"] = novos_tw
-                                        with open(path_tw, "w", encoding="utf-8") as _f:
-                                            json.dump(dados_tw, _f, ensure_ascii=False, indent=2)
+                                        novos_tw = llm_brain.gerar_carrossel_tweet(tema=doc_tw["tema"], empresa=emp["nome"], empresa_id=emp["id"], publico_alvo=emp["publico_alvo"], url_site=emp.get("url_site", ""))
+                                        db.atualizar_conteudo(cid_tw, {"slides": novos_tw["slides"], "legenda": novos_tw.get("legenda", "")})
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erro: {e}")
 
-                            # ── Imagens Tweet ─────────────────────────
-                            imagens_tw = gerador_imagens.listar_imagens_tweet(emp["id"], path_tw.stem)
-                            iv_tw = {
-                                **emp.get("identidade_visual", {}),
-                                "estilo_imagem": emp.get("estilo_imagem", ""),
-                            }
-
-                            # Seletor de logo + cor do círculo
-                            _logo_idx_tw = 1
-                            _cor_circ_tw = "#1d9bf0"
+                            imagens_tw = gerador_imagens.listar_imagens_tweet(emp["id"], stem_tw)
+                            iv_tw = {**emp.get("identidade_visual", {}), "estilo_imagem": emp.get("estilo_imagem", "")}
+                            _prim_entry = (emp.get("identidade_visual", {}).get("primarias") or [{}])[0]
+                            _cor_prim_emp = _prim_entry.get("hex", "#1d9bf0") if isinstance(_prim_entry, dict) else str(_prim_entry)
+                            _logo_idx_tw = 2
+                            _cor_circ_tw = _cor_prim_emp
                             _tw_col1, _tw_col2 = st.columns([2, 1])
                             with _tw_col1:
                                 if gerador_imagens.logo_empresa(emp["id"], 2):
                                     _logos_opts_tw = ["Logo 1 (principal)", "Logo 2 (alternativa)"]
-                                    _logo_sel_tw = st.radio(
-                                        "Logo",
-                                        _logos_opts_tw,
-                                        horizontal=True,
-                                        key=f"logo_radio_tw_{path_tw.stem}",
-                                        label_visibility="collapsed",
-                                    )
+                                    _logo_sel_tw = st.radio("Logo", _logos_opts_tw, index=1, horizontal=True, key=f"logo_tw_{cid_tw}", label_visibility="collapsed")
                                     _logo_idx_tw = 2 if _logo_sel_tw == _logos_opts_tw[1] else 1
                             with _tw_col2:
-                                _cor_circ_tw = st.color_picker(
-                                    "Cor do círculo",
-                                    value="#1d9bf0",
-                                    key=f"cor_circ_tw_{path_tw.stem}",
-                                )
+                                _cor_circ_tw = st.color_picker("Cor do círculo", value=_cor_prim_emp, key=f"cor_tw_{cid_tw}")
+
+                            _leg_tw = doc_tw.get("legenda", "")
+                            _col_leg_tw, _col_gerar_leg_tw = st.columns([4, 1])
+                            with _col_leg_tw:
+                                _nova_leg_tw = st.text_area("Legenda", value=_leg_tw, key=f"leg_tw_{cid_tw}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
+                            with _col_gerar_leg_tw:
+                                if st.button("✨ Gerar legenda", key=f"gerar_leg_tw_{cid_tw}", width='stretch'):
+                                    with st.spinner("Gerando..."):
+                                        try:
+                                            _nova_leg_tw = llm_brain.gerar_legenda(doc_tw["tema"], emp["nome"], emp["id"], emp["publico_alvo"], doc_tw.get("slides", []))
+                                            db.atualizar_conteudo(cid_tw, {"legenda": _nova_leg_tw})
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
+                                if _nova_leg_tw != _leg_tw:
+                                    if st.button("💾 Salvar legenda", key=f"sv_leg_tw_{cid_tw}", width='stretch'):
+                                        db.atualizar_conteudo(cid_tw, {"legenda": _nova_leg_tw})
+                                        st.success("Legenda salva.")
 
                             if imagens_tw:
-                                col_cap_tw, col_baixar_tw, col_regen_img_tw = st.columns([3, 1, 1])
+                                col_cap_tw, col_baixar_tw, col_drive_tw, col_regen_img_tw = st.columns([2, 1, 1, 1])
                                 col_cap_tw.caption(f"{len(imagens_tw)} imagem(ns) gerada(s)")
-                                regen_tw_tudo = col_regen_img_tw.button("↺ Regenerar tudo", key=f"regen_tw_img_{path_tw.stem}", use_container_width=True)
-
+                                regen_tw_tudo = col_regen_img_tw.button("↺ Regenerar tudo", key=f"regen_tw_img_{cid_tw}", width='stretch')
+                                folder_id_tw = emp.get("drive_folder_id", "") or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+                                if col_drive_tw.button("📤 Drive", key=f"drive_tw_{cid_tw}", width='stretch', disabled=not folder_id_tw):
+                                    with st.spinner("Enviando..."):
+                                        try:
+                                            resultados, nome_pasta, folder_link = drive.enviar_carrossel_drive(imagens_tw, folder_id_tw)
+                                            db.marcar_drive_enviado(cid_tw, folder_link)
+                                            st.success(f"{len(resultados)} imagens enviadas para **{nome_pasta}**!")
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
+                                if not folder_id_tw:
+                                    col_drive_tw.caption("Configure o ID da pasta na aba Empresas")
                                 zip_buf_tw = io.BytesIO()
                                 with zipfile.ZipFile(zip_buf_tw, "w", zipfile.ZIP_DEFLATED) as zf:
                                     for idx, ip in enumerate(imagens_tw):
-                                        zf.write(ip, arcname=f"{idx + 1}.png")
+                                        zf.write(ip, arcname=f"{idx+1}.png")
                                 zip_buf_tw.seek(0)
-                                col_baixar_tw.download_button(
-                                    label="↓ Baixar tudo",
-                                    data=zip_buf_tw,
-                                    file_name=f"{path_tw.stem}_tweet.zip",
-                                    mime="application/zip",
-                                    key=f"dl_zip_tw_{path_tw.stem}",
-                                    use_container_width=True,
-                                )
+                                col_baixar_tw.download_button("↓ Baixar tudo", data=zip_buf_tw, file_name=f"{stem_tw}_tweet.zip", mime="application/zip", key=f"dl_zip_tw_{cid_tw}", width='stretch')
                                 cols_tw = st.columns(3)
                                 for idx, img_path_tw in enumerate(imagens_tw):
                                     slide_n_tw = int(img_path_tw.stem.split("_")[-1])
                                     with cols_tw[idx % 3]:
-                                        st.image(str(img_path_tw), use_container_width=True)
+                                        st.image(str(img_path_tw), width='stretch')
                                         col_dl_tw, col_rs_tw = st.columns(2)
                                         with open(img_path_tw, "rb") as img_f_tw:
-                                            col_dl_tw.download_button(
-                                                label="↓ Baixar",
-                                                data=img_f_tw.read(),
-                                                file_name=img_path_tw.name,
-                                                mime="image/png",
-                                                key=f"dl_tw_{path_tw.stem}_{idx}",
-                                                use_container_width=True,
-                                            )
-                                        if col_rs_tw.button("↺ Slide", key=f"regen_slide_tw_{path_tw.stem}_{idx}", use_container_width=True):
-                                            slide_data_tw = next(
-                                                (s for s in dados_tw.get("slides", []) if s.get("slide") == slide_n_tw),
-                                                None,
-                                            )
-                                            if slide_data_tw:
+                                            col_dl_tw.download_button("↓ Baixar", data=img_f_tw.read(), file_name=img_path_tw.name, mime="image/png", key=f"dl_tw_{cid_tw}_{idx}", width='stretch')
+                                        if col_rs_tw.button("↺ Slide", key=f"rs_tw_{cid_tw}_{idx}", width='stretch'):
+                                            sd_tw = next((s for s in doc_tw.get("slides", []) if s.get("slide") == slide_n_tw), None)
+                                            if sd_tw:
                                                 with st.spinner(f"Regenerando slide {slide_n_tw}..."):
                                                     try:
-                                                        gerador_imagens.gerar_imagem_slide_tweet(
-                                                            slide=slide_data_tw,
-                                                            empresa_id=emp["id"],
-                                                            empresa_nome=emp["nome"],
-                                                            stem=path_tw.stem,
-                                                            identidade_visual=iv_tw,
-                                                            logo_index=_logo_idx_tw,
-                                                            cor_circulo_hex=_cor_circ_tw,
-                                                        )
+                                                        gerador_imagens.gerar_imagem_slide_tweet(slide=sd_tw, empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_tw, identidade_visual=iv_tw, logo_index=_logo_idx_tw, cor_circulo_hex=_cor_circ_tw)
                                                         st.rerun()
                                                     except Exception as e:
                                                         st.error(f"Erro: {e}")
@@ -1048,28 +1175,14 @@ with aba_conteudos:
                                 regen_tw_tudo = False
 
                             if not imagens_tw or regen_tw_tudo:
-                                if regen_tw_tudo or st.button("Gerar Imagens", key=f"gen_img_tw_{path_tw.stem}", type="primary"):
-                                    slides_tw = dados_tw.get("slides", [])
-                                    barra_tw  = st.progress(0, text="Iniciando...")
+                                if regen_tw_tudo or st.button("Gerar Imagens", key=f"gen_img_tw_{cid_tw}", type="primary"):
+                                    barra_tw = st.progress(0, text="Iniciando...")
                                     status_tw = st.empty()
-
-                                    def _prog_tw(n, total):
-                                        barra_tw.progress(n / total, text=f"Gerando slide {n} de {total}...")
-                                        status_tw.caption(f"Slide {n}/{total} concluído.")
-
+                                    def _prog_tw(n, total): barra_tw.progress(n/total, text=f"Slide {n}/{total}..."); status_tw.caption(f"Slide {n}/{total}")
                                     try:
-                                        gerador_imagens.gerar_imagens_carrossel_tweet(
-                                            slides=slides_tw,
-                                            empresa_id=emp["id"],
-                                            empresa_nome=emp["nome"],
-                                            stem=path_tw.stem,
-                                            identidade_visual=iv_tw,
-                                            logo_index=_logo_idx_tw,
-                                            cor_circulo_hex=_cor_circ_tw,
-                                            callback=_prog_tw,
-                                        )
-                                        barra_tw.empty()
-                                        status_tw.empty()
+                                        gerador_imagens.gerar_imagens_carrossel_tweet(slides=doc_tw.get("slides", []), empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_tw, identidade_visual=iv_tw, logo_index=_logo_idx_tw, cor_circulo_hex=_cor_circ_tw, callback=_prog_tw)
+                                        db.marcar_imagens_geradas(cid_tw)
+                                        barra_tw.empty(); status_tw.empty()
                                         st.success("Imagens geradas!")
                                         st.rerun()
                                     except Exception as e:
@@ -1077,127 +1190,114 @@ with aba_conteudos:
 
                             st.divider()
                             st.caption("Slides (texto)")
-                            for slide in dados_tw.get("slides", []):
-                                st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
-                                st.write(slide["texto"])
-                                st.divider()
+                            slides_tw_ed = list(doc_tw.get("slides", []))
+                            for i, slide in enumerate(slides_tw_ed):
+                                _sk = f"tw_{cid_tw}_{slide['slide']}"
+                                st.caption(f"Slide {slide['slide']}")
+                                slides_tw_ed[i]["titulo"] = st.text_input("Título", value=slide["titulo"], key=f"tit_{_sk}", label_visibility="collapsed", placeholder="Título")
+                                slides_tw_ed[i]["texto"]  = st.text_area("Texto",  value=slide["texto"],  key=f"txt_{_sk}", label_visibility="collapsed", placeholder="Texto", height=100)
+                                if slide.get("prompt_imagem") is not None:
+                                    slides_tw_ed[i]["prompt_imagem"] = st.text_area("Prompt", value=slide["prompt_imagem"], key=f"prm_{_sk}", label_visibility="collapsed", placeholder="Prompt de imagem", height=68)
+                                _cs_tw, _csr_tw = st.columns(2)
+                                if _cs_tw.button("💾 Salvar", key=f"sv_{_sk}", width='stretch'):
+                                    db.atualizar_conteudo(cid_tw, {"slides": slides_tw_ed})
+                                    st.success(f"Slide {slide['slide']} salvo.")
+                                    st.rerun()
+                                if _csr_tw.button("💾 Salvar e Regenerar", key=f"svr_{_sk}", width='stretch'):
+                                    db.atualizar_conteudo(cid_tw, {"slides": slides_tw_ed})
+                                    with st.spinner(f"Regenerando slide {slide['slide']}..."):
+                                        try:
+                                            gerador_imagens.gerar_imagem_slide_tweet(slide=slides_tw_ed[i], empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_tw, identidade_visual=iv_tw, logo_index=_logo_idx_tw, cor_circulo_hex=_cor_circ_tw)
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
 
                 with sub_misto_dd:
-                    arquivos_mdd = listar_conteudos(emp["id"], "carrossel_misto_dd")
-                    if not arquivos_mdd:
+                    docs_mdd = listar_conteudos(emp["id"], "carrossel_misto_dd")
+                    if not docs_mdd:
                         st.caption("Nenhum Carrossel Misto DD gerado.")
-                    for path_mdd in arquivos_mdd:
-                        data_mdd = datetime.fromtimestamp(path_mdd.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
-                        with open(path_mdd, encoding="utf-8") as f_mdd:
-                            dados_mdd = json.load(f_mdd)
-                        tema_mdd = dados_mdd.get("tema", path_mdd.stem)
-                        with st.expander(f"{tema_mdd}  ·  {data_mdd}"):
+                    for doc_mdd in docs_mdd:
+                        cid_mdd  = doc_mdd["_id"]
+                        stem_mdd = doc_mdd.get("stem", cid_mdd)
+                        data_mdd = doc_mdd["criado_em"].strftime("%d/%m/%Y %H:%M") if doc_mdd.get("criado_em") else "—"
+                        with st.expander(f"{doc_mdd['tema']}  ·  {data_mdd}"):
+                            _checklist_status(doc_mdd)
                             col_del_mdd, col_regen_mdd, _esp_mdd = st.columns([1, 2, 3])
-                            if col_del_mdd.button("Excluir", key=f"del_mdd_{emp['id']}_{path_mdd.stem}", type="secondary"):
-                                excluir_conteudo(emp["id"], path_mdd.stem)
-                                st.success("Conteúdo excluído.")
+                            if col_del_mdd.button("Excluir", key=f"del_mdd_{emp['id']}_{cid_mdd}", type="secondary"):
+                                excluir_conteudo(cid_mdd)
+                                st.success("Excluído.")
                                 st.rerun()
-                            if col_regen_mdd.button("↺ Regenerar texto", key=f"regen_mdd_{path_mdd.stem}", use_container_width=True):
+                            if col_regen_mdd.button("↺ Regenerar texto", key=f"regen_mdd_{cid_mdd}", width='stretch'):
                                 with st.spinner("Regenerando..."):
                                     try:
-                                        novos_mdd = llm_brain.gerar_carrossel_misto_dd(
-                                            tema=tema_mdd,
-                                            empresa=emp["nome"],
-                                            empresa_id=emp["id"],
-                                            publico_alvo=emp["publico_alvo"],
-                                            url_site=emp.get("url_site", ""),
-                                        )
-                                        dados_mdd["slides"] = novos_mdd
-                                        with open(path_mdd, "w", encoding="utf-8") as _f:
-                                            json.dump(dados_mdd, _f, ensure_ascii=False, indent=2)
+                                        novos_mdd = llm_brain.gerar_carrossel_misto_dd(tema=doc_mdd["tema"], empresa=emp["nome"], empresa_id=emp["id"], publico_alvo=emp["publico_alvo"], url_site=emp.get("url_site", ""))
+                                        db.atualizar_conteudo(cid_mdd, {"slides": novos_mdd["slides"], "legenda": novos_mdd.get("legenda", "")})
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erro: {e}")
 
-                            # ── Imagens Misto DD ───────────────────────────
-                            imagens_mdd = gerador_imagens.listar_imagens_misto_dd(emp["id"], path_mdd.stem)
-                            iv_mdd = {
-                                **emp.get("identidade_visual", {}),
-                                "estilo_imagem": emp.get("estilo_imagem", ""),
-                                "url_site": emp.get("url_site", ""),
-                            }
-
+                            imagens_mdd = gerador_imagens.listar_imagens_misto_dd(emp["id"], stem_mdd)
+                            iv_mdd = {**emp.get("identidade_visual", {}), "estilo_imagem": emp.get("estilo_imagem", ""), "url_site": emp.get("url_site", "")}
                             _logo_idx_mdd = 1
                             if gerador_imagens.logo_empresa(emp["id"], 2):
                                 _logos_opts_mdd = ["Logo 1 (principal)", "Logo 2 (alternativa)"]
-                                _logo_sel_mdd = st.radio(
-                                    "Logo",
-                                    _logos_opts_mdd,
-                                    horizontal=True,
-                                    key=f"logo_radio_mdd_{path_mdd.stem}",
-                                    label_visibility="collapsed",
-                                )
+                                _logo_sel_mdd = st.radio("Logo", _logos_opts_mdd, horizontal=True, key=f"logo_mdd_{cid_mdd}", label_visibility="collapsed")
                                 _logo_idx_mdd = 2 if _logo_sel_mdd == _logos_opts_mdd[1] else 1
+
+                            _leg_mdd = doc_mdd.get("legenda", "")
+                            _col_leg_mdd, _col_gerar_leg_mdd = st.columns([4, 1])
+                            with _col_leg_mdd:
+                                _nova_leg_mdd = st.text_area("Legenda", value=_leg_mdd, key=f"leg_mdd_{cid_mdd}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
+                            with _col_gerar_leg_mdd:
+                                if st.button("✨ Gerar legenda", key=f"gerar_leg_mdd_{cid_mdd}", width='stretch'):
+                                    with st.spinner("Gerando..."):
+                                        try:
+                                            _nova_leg_mdd = llm_brain.gerar_legenda(doc_mdd["tema"], emp["nome"], emp["id"], emp["publico_alvo"], doc_mdd.get("slides", []))
+                                            db.atualizar_conteudo(cid_mdd, {"legenda": _nova_leg_mdd})
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
+                                if _nova_leg_mdd != _leg_mdd:
+                                    if st.button("💾 Salvar legenda", key=f"sv_leg_mdd_{cid_mdd}", width='stretch'):
+                                        db.atualizar_conteudo(cid_mdd, {"legenda": _nova_leg_mdd})
+                                        st.success("Legenda salva.")
 
                             if imagens_mdd:
                                 col_cap_mdd, col_baixar_mdd, col_drive_mdd, col_regen_mdd_img = st.columns([2, 1, 1, 1])
                                 col_cap_mdd.caption(f"{len(imagens_mdd)} imagem(ns) gerada(s)")
-                                regen_mdd_tudo = col_regen_mdd_img.button("↺ Regenerar tudo", key=f"regen_mdd_img_{path_mdd.stem}", use_container_width=True)
-
+                                regen_mdd_tudo = col_regen_mdd_img.button("↺ Regenerar tudo", key=f"regen_mdd_img_{cid_mdd}", width='stretch')
                                 folder_id_mdd = emp.get("drive_folder_id", "") or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
-                                if col_drive_mdd.button("📤 Drive", key=f"drive_mdd_{path_mdd.stem}", use_container_width=True, disabled=not folder_id_mdd):
-                                    with st.spinner("Enviando para o Google Drive..."):
+                                if col_drive_mdd.button("📤 Drive", key=f"drive_mdd_{cid_mdd}", width='stretch', disabled=not folder_id_mdd):
+                                    with st.spinner("Enviando..."):
                                         try:
-                                            resultados, nome_pasta = drive.enviar_carrossel_drive(imagens_mdd, folder_id_mdd)
-                                            st.success(f"{len(resultados)} imagens enviadas para **{nome_pasta}** no Drive!")
+                                            resultados, nome_pasta, folder_link = drive.enviar_carrossel_drive(imagens_mdd, folder_id_mdd)
+                                            db.marcar_drive_enviado(cid_mdd, folder_link)
+                                            st.success(f"{len(resultados)} imagens enviadas para **{nome_pasta}**!")
                                         except Exception as e:
-                                            st.error(f"Erro ao enviar para o Drive: {e}")
+                                            st.error(f"Erro: {e}")
                                 if not folder_id_mdd:
                                     col_drive_mdd.caption("Configure o ID da pasta na aba Empresas")
-
                                 zip_buf_mdd = io.BytesIO()
                                 with zipfile.ZipFile(zip_buf_mdd, "w", zipfile.ZIP_DEFLATED) as zf:
                                     for idx, ip in enumerate(imagens_mdd):
-                                        zf.write(ip, arcname=f"{idx + 1}.png")
+                                        zf.write(ip, arcname=f"{idx+1}.png")
                                 zip_buf_mdd.seek(0)
-                                col_baixar_mdd.download_button(
-                                    label="↓ Baixar tudo",
-                                    data=zip_buf_mdd,
-                                    file_name=f"{path_mdd.stem}_misto_dd.zip",
-                                    mime="application/zip",
-                                    key=f"dl_zip_mdd_{path_mdd.stem}",
-                                    use_container_width=True,
-                                )
-
+                                col_baixar_mdd.download_button("↓ Baixar tudo", data=zip_buf_mdd, file_name=f"{stem_mdd}_misto_dd.zip", mime="application/zip", key=f"dl_zip_mdd_{cid_mdd}", width='stretch')
                                 cols_mdd = st.columns(3)
                                 for idx, img_path_mdd in enumerate(imagens_mdd):
                                     slide_n_mdd = int(img_path_mdd.stem.split("_")[-1])
                                     with cols_mdd[idx % 3]:
-                                        st.image(str(img_path_mdd), use_container_width=True)
-                                        fundo_key = f"fundo_ok_mdd_{path_mdd.stem}_{idx}"
-                                        fundo_ok  = st.checkbox("Fundo ok", key=fundo_key)
+                                        st.image(str(img_path_mdd), width='stretch')
+                                        fundo_ok = st.checkbox("Fundo ok", key=f"fundo_mdd_{cid_mdd}_{idx}")
                                         col_dl_mdd, col_rs_mdd = st.columns(2)
                                         with open(img_path_mdd, "rb") as img_f_mdd:
-                                            col_dl_mdd.download_button(
-                                                label="↓ Baixar",
-                                                data=img_f_mdd.read(),
-                                                file_name=img_path_mdd.name,
-                                                mime="image/png",
-                                                key=f"dl_mdd_{path_mdd.stem}_{idx}",
-                                                use_container_width=True,
-                                            )
-                                        if col_rs_mdd.button("↺ Slide", key=f"regen_slide_mdd_{path_mdd.stem}_{idx}", use_container_width=True):
-                                            slide_data_mdd = next(
-                                                (s for s in dados_mdd.get("slides", []) if s.get("slide") == slide_n_mdd),
-                                                None,
-                                            )
-                                            if slide_data_mdd:
+                                            col_dl_mdd.download_button("↓ Baixar", data=img_f_mdd.read(), file_name=img_path_mdd.name, mime="image/png", key=f"dl_mdd_{cid_mdd}_{idx}", width='stretch')
+                                        if col_rs_mdd.button("↺ Slide", key=f"rs_mdd_{cid_mdd}_{idx}", width='stretch'):
+                                            sd_mdd = next((s for s in doc_mdd.get("slides", []) if s.get("slide") == slide_n_mdd), None)
+                                            if sd_mdd:
                                                 with st.spinner(f"Regenerando slide {slide_n_mdd}..."):
                                                     try:
-                                                        gerador_imagens.gerar_imagem_slide_misto_dd(
-                                                            slide=slide_data_mdd,
-                                                            empresa_id=emp["id"],
-                                                            empresa_nome=emp["nome"],
-                                                            stem=path_mdd.stem,
-                                                            identidade_visual=iv_mdd,
-                                                            logo_index=_logo_idx_mdd,
-                                                            fundo_fixo=fundo_ok,
-                                                        )
+                                                        gerador_imagens.gerar_imagem_slide_misto_dd(slide=sd_mdd, empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_mdd, identidade_visual=iv_mdd, logo_index=_logo_idx_mdd, fundo_fixo=fundo_ok)
                                                         st.rerun()
                                                     except Exception as e:
                                                         st.error(f"Erro: {e}")
@@ -1205,27 +1305,14 @@ with aba_conteudos:
                                 regen_mdd_tudo = False
 
                             if not imagens_mdd or regen_mdd_tudo:
-                                if regen_mdd_tudo or st.button("Gerar Imagens", key=f"gen_img_mdd_{path_mdd.stem}", type="primary"):
-                                    slides_mdd_gen = dados_mdd.get("slides", [])
-                                    barra_mdd  = st.progress(0, text="Iniciando...")
+                                if regen_mdd_tudo or st.button("Gerar Imagens", key=f"gen_img_mdd_{cid_mdd}", type="primary"):
+                                    barra_mdd = st.progress(0, text="Iniciando...")
                                     status_mdd = st.empty()
-
-                                    def _prog_mdd(n, total):
-                                        barra_mdd.progress(n / total, text=f"Gerando slide {n} de {total}...")
-                                        status_mdd.caption(f"Slide {n}/{total} concluído.")
-
+                                    def _prog_mdd(n, total): barra_mdd.progress(n/total, text=f"Slide {n}/{total}..."); status_mdd.caption(f"Slide {n}/{total}")
                                     try:
-                                        gerador_imagens.gerar_imagens_carrossel_misto_dd(
-                                            slides=slides_mdd_gen,
-                                            empresa_id=emp["id"],
-                                            empresa_nome=emp["nome"],
-                                            stem=path_mdd.stem,
-                                            identidade_visual=iv_mdd,
-                                            logo_index=_logo_idx_mdd,
-                                            callback=_prog_mdd,
-                                        )
-                                        barra_mdd.empty()
-                                        status_mdd.empty()
+                                        gerador_imagens.gerar_imagens_carrossel_misto_dd(slides=doc_mdd.get("slides", []), empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_mdd, identidade_visual=iv_mdd, logo_index=_logo_idx_mdd, callback=_prog_mdd)
+                                        db.marcar_imagens_geradas(cid_mdd)
+                                        barra_mdd.empty(); status_mdd.empty()
                                         st.success("Imagens geradas!")
                                         st.rerun()
                                     except Exception as e:
@@ -1233,63 +1320,43 @@ with aba_conteudos:
 
                             st.divider()
                             st.caption("Slides (texto)")
-                            for slide in dados_mdd.get("slides", []):
-                                st.markdown(f"**Slide {slide['slide']} — {slide['titulo']}**")
-                                st.write(slide["texto"])
+                            slides_mdd_ed = list(doc_mdd.get("slides", []))
+                            for i, slide in enumerate(slides_mdd_ed):
+                                _sk = f"mdd_{cid_mdd}_{slide['slide']}"
+                                st.caption(f"Slide {slide['slide']}")
+                                slides_mdd_ed[i]["titulo"] = st.text_input("Título", value=slide["titulo"], key=f"tit_{_sk}", label_visibility="collapsed", placeholder="Título")
+                                slides_mdd_ed[i]["texto"]  = st.text_area("Texto",  value=slide["texto"],  key=f"txt_{_sk}", label_visibility="collapsed", placeholder="Texto", height=100)
                                 if slide.get("prompt_imagem") is not None:
-                                    _edit_key = f"edit_prompt_{path_mdd.stem}_{slide['slide']}"
-                                    _col_p, _col_e = st.columns([6, 1])
-                                    _col_p.caption(f"🖼️ {slide['prompt_imagem']}")
-                                    if _col_e.button("✏️", key=f"btn_ep_{path_mdd.stem}_{slide['slide']}", help="Editar prompt de imagem"):
-                                        st.session_state[_edit_key] = not st.session_state.get(_edit_key, False)
-                                    if st.session_state.get(_edit_key, False):
-                                        _novo_prompt = st.text_area(
-                                            "Prompt",
-                                            value=slide["prompt_imagem"],
-                                            key=f"ta_ep_{path_mdd.stem}_{slide['slide']}",
-                                            label_visibility="collapsed",
-                                        )
-                                        _cs, _csr = st.columns(2)
-                                        if _cs.button("💾 Salvar", key=f"sv_ep_{path_mdd.stem}_{slide['slide']}", use_container_width=True):
-                                            slide["prompt_imagem"] = _novo_prompt
-                                            with open(path_mdd, "w", encoding="utf-8") as _fp:
-                                                json.dump(dados_mdd, _fp, ensure_ascii=False, indent=2)
-                                            st.session_state[_edit_key] = False
+                                    slides_mdd_ed[i]["prompt_imagem"] = st.text_area("Prompt", value=slide["prompt_imagem"], key=f"prm_{_sk}", label_visibility="collapsed", placeholder="Prompt de imagem", height=68)
+                                _cs, _csr = st.columns(2)
+                                if _cs.button("💾 Salvar", key=f"sv_{_sk}", width='stretch'):
+                                    db.atualizar_conteudo(cid_mdd, {"slides": slides_mdd_ed})
+                                    st.success(f"Slide {slide['slide']} salvo.")
+                                    st.rerun()
+                                if _csr.button("💾 Salvar e Regenerar", key=f"svr_{_sk}", width='stretch'):
+                                    db.atualizar_conteudo(cid_mdd, {"slides": slides_mdd_ed})
+                                    with st.spinner(f"Regenerando slide {slide['slide']}..."):
+                                        try:
+                                            gerador_imagens.gerar_imagem_slide_misto_dd(slide=slides_mdd_ed[i], empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_mdd, identidade_visual=iv_mdd, logo_index=_logo_idx_mdd)
                                             st.rerun()
-                                        if _csr.button("💾 Salvar e Regenerar", key=f"svr_ep_{path_mdd.stem}_{slide['slide']}", use_container_width=True):
-                                            slide["prompt_imagem"] = _novo_prompt
-                                            with open(path_mdd, "w", encoding="utf-8") as _fp:
-                                                json.dump(dados_mdd, _fp, ensure_ascii=False, indent=2)
-                                            with st.spinner(f"Regenerando slide {slide['slide']}..."):
-                                                try:
-                                                    gerador_imagens.gerar_imagem_slide_misto_dd(
-                                                        slide=slide,
-                                                        empresa_id=emp["id"],
-                                                        empresa_nome=emp["nome"],
-                                                        stem=path_mdd.stem,
-                                                        identidade_visual=iv_mdd,
-                                                        logo_index=_logo_idx_mdd,
-                                                    )
-                                                    st.session_state[_edit_key] = False
-                                                    st.rerun()
-                                                except Exception as e:
-                                                    st.error(f"Erro: {e}")
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
                                 st.divider()
 
                 with sub_linkedin:
-                    _listar_md("linkedin", 300, "li",
+                    _listar_md("linkedin", "post_linkedin", 300, "li",
                         fn_regenerar=lambda tema: llm_brain.gerar_linkedin(
                             tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")
                         ))
 
                 with sub_video:
-                    _listar_md("video", 200, "vid",
+                    _listar_md("video", "narracao_video", 200, "vid",
                         fn_regenerar=lambda tema: llm_brain.gerar_narracao(
                             tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")
                         ))
 
                 with sub_blog:
-                    _listar_md("blog", 500, "blog",
+                    _listar_md("blog", "blog", 500, "blg",
                         fn_regenerar=lambda tema: llm_brain.gerar_blog(
                             tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")
                         ))

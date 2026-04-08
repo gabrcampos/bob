@@ -7,7 +7,10 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/documents",
+]
 
 _CLIENT_SECRET = Path("config/oauth_client.json")
 _TOKEN_FILE    = Path("config/drive_token.json")
@@ -153,4 +156,5 @@ def enviar_carrossel_drive(imagens: list[Path], folder_id: str) -> tuple[list[di
             "url": arquivo.get("webViewLink", ""),
         })
 
-    return resultados, nome_pasta
+    folder_link = f"https://drive.google.com/drive/folders/{subfolder_id}"
+    return resultados, nome_pasta, folder_link

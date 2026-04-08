@@ -13,15 +13,15 @@ CONTEXTOS_DIR  = Path("config/contextos")
 HISTORICO_DIR  = Path("config/historico")
 
 ESTRUTURA_CARROSSEL = """
-Slide 1 — Gancho: frase de impacto que prende a atenção imediatamente. O TÍTULO deste slide deve ser uma frase curta de no máximo 6 palavras que funcione como gancho do conteúdo. O TEXTO deve ser tão conciso quanto o título — uma única frase curta e semanticamente completa com o dado ou estatística mais impactante sobre o tema (cite fonte e ano). A frase deve ter sentido pleno; não corte palavras no meio de uma ideia.
-Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato de bullet ✓ (um por linha, iniciando com o caractere ✓ seguido de espaço e o texto). Exemplo: "✓ Falhas frequentes de integração\n✓ Custos operacionais crescentes". Cada item deve ser conciso (máx. 12 palavras).
-Slide 3 — Causa Raiz: por que o problema persiste? A causa real, não o sintoma superficial
-Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras concretas usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Exemplo: "✗ Perda de 23% na produtividade\n✗ Aumento de 40% nos custos de TI". Use números reais com fonte.
-Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando
-Slide 6 — Case real: escolha UM único caso emblemático com resultado mensurável e surpreendente. O TÍTULO deve ser o resultado principal em forma de afirmação assertiva (máx 6 palavras). O TEXTO deve ser uma frase única, forte e direta com empresa, abordagem e resultado mensurável (máx 25 palavras, cite fonte). prompt_imagem deve ser "" (este slide não usa imagem).
-Slide 7 — O que está por trás: categoria de solução e princípio que explica o resultado — sem receita, sem produto específico
-Slide 8 — Outros exemplos: dois casos distintos com abordagens DIFERENTES, apresentados lado a lado. O TÍTULO deve ser o tema comparativo (máx 5 palavras). O TEXTO deve ter EXATAMENTE este formato: "[Empresa/setor A: abordagem e resultado — máx 15 palavras]\n---\n[Empresa/setor B: abordagem e resultado — máx 15 palavras]". O PROMPT_IMAGEM deve ter EXATAMENTE este formato: "[cena visual para o caso A]\n---\n[cena visual para o caso B]" (dois prompts em inglês separados por \n---\n, cada um sem texto/letras).
-Slide 9 — O que considerar: fatores-chave para avaliar qual caminho faz sentido para o contexto de cada empresa
+Slide 1 — Gancho/Capa: O TÍTULO deve ser uma frase de no máximo 6 palavras como gancho direto do DADO VERIFICADO. O TEXTO deve ser EXATAMENTE o DADO VERIFICADO fornecido acima — copie-o literalmente, sem alterar uma palavra. Se não houver DADO VERIFICADO, o texto deve ser uma frase de impacto conceitual curta.
+Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato de bullet ✓ (um por linha, iniciando com o caractere ✓ seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
+Slide 3 — Causa Raiz: por que o problema persiste? Título curto + texto conceitual (1-2 frases, SEM dados, SEM cases, texto corrido simples).
+Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Itens conceituais, sem números ou percentuais, máx 12 palavras cada.
+Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando. Texto conceitual, sem dados.
+Slide 6 — Insight central: o princípio ou mudança de perspectiva que faz a diferença. Título assertivo + texto conceitual (1-2 frases). prompt_imagem deve ser "" (este slide não usa imagem).
+Slide 7 — O que está por trás: categoria de solução e princípio que explica o resultado — sem receita, sem produto específico. Texto conceitual.
+Slide 8 — O que diferencia quem resolve: fatores que separam quem supera o problema de quem continua preso nele. Título assertivo + texto conceitual (1-2 frases). prompt_imagem: cena física relacionada ao contexto, sem texto.
+Slide 9 — O que considerar: fatores-chave para avaliar qual caminho faz sentido para o contexto de cada empresa. Texto conceitual.
 """
 
 PROMPT_COMPILAR_CONTEXTO = """Você é um estrategista de conteúdo B2B. Analise as informações brutas abaixo sobre a empresa "{empresa}" e compile um perfil editorial conciso que será usado para orientar a produção de conteúdo.
@@ -58,14 +58,16 @@ Todo o conteúdo deve ser em português brasileiro.
 {contexto_compilado}
 {historico_recente}
 {padrao_qualidade}
-
+{dado_verificado}
 Gere 3 peças de conteúdo sobre o tema "{tema}":
 
 1. CARROSSEL (9 slides obrigatórios):
 {estrutura}
+REGRA CENTRAL: Apenas o slide 1 pode conter dados, estatísticas ou referências a casos reais — com fonte obrigatória. Todos os demais slides (2 a 9) devem ser 100% conceituais: sem números, sem percentuais, sem nomes de empresas como case, sem fontes. O valor está no raciocínio, não nos dados.
+
 Cada slide deve ter:
 - "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 6 palavras — gancho direto)
-- "texto": corpo do slide (máx 2 frases curtas e diretas, sem bullets, sem rodeios — vá direto ao dado ou argumento)
+- "texto": corpo do slide (máx 2 frases curtas e diretas, sem bullets, sem rodeios — direto ao argumento)
 - "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). EXCEÇÕES DE FORMATO: slide 6 deve ter prompt_imagem="" (sem imagem); slide 8 deve ter EXATAMENTE dois prompts separados por "\n---\n" (um para cada painel). REGRAS OBRIGATÓRIAS para todos os prompts: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real com pessoas, objetos ou ambientes físicos — nunca conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) ABSOLUTAMENTE PROIBIDO: qualquer referência a texto, letras, palavras, números, letreiros, sinalização, telas com escrita, quadros brancos, apresentações, setas com labels, diagramas com texto, gráficos com labels ou qualquer elemento tipográfico — a cena deve ter APENAS elementos visuais puros sem escrita; (d) evite descrever setas, diagramas ou infográficos que naturalmente contenham texto; (e) prefira cenas do mundo físico: pessoas em ação, ambientes corporativos/industriais, paisagens urbanas, equipamentos, reuniões sem foco em telas.
 
 2. POST LINKEDIN (mín 4 parágrafos, máx 3.000 caracteres):
@@ -84,6 +86,11 @@ Cada slide deve ter:
 - Começa com um gancho forte
 - Texto contínuo, fluido para leitura em voz alta
 
+4. LEGENDA (para acompanhar o carrossel na publicação):
+- 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
+- Começa com um gancho ou pergunta que convida o leitor a ver o carrossel
+- Tom direto, sem emojis corporativos, máx 220 palavras
+
 Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
 Estrutura exata:
 {{
@@ -92,7 +99,8 @@ Estrutura exata:
     ... (9 slides)
   ],
   "post_linkedin": "...",
-  "narracao_video": "..."
+  "narracao_video": "...",
+  "legenda": "..."
 }}"""
 
 PROMPT_BLOG = """Você é um redator especialista em SEO e tecnologia B2B corporativa.
@@ -301,16 +309,106 @@ def _bloco_contexto(empresa_id: str, url_site: str) -> str:
     return f"\nContexto adicional sobre a empresa:\n{raw}\n" if raw else ""
 
 
-def _parse_json(raw: str) -> dict:
+_VALID_JSON_ESCAPES = frozenset('"\\/bfnrtu')
+
+
+def _sanitize_json_strings(raw: str) -> str:
+    """Corrige problemas comuns em JSON gerado por LLM:
+    - Caracteres de controle literais (newline, tab, CR) dentro de strings
+    - Backslashes com sequências de escape inválidas (ex: \\s, \\p)
+    """
+    result = []
+    in_string = False
+    escape_next = False
+    for char in raw:
+        if escape_next:
+            if char not in _VALID_JSON_ESCAPES:
+                result.append("\\")  # duplica a barra para tornar válido
+            result.append(char)
+            escape_next = False
+        elif char == "\\" and in_string:
+            result.append(char)
+            escape_next = True
+        elif char == '"':
+            in_string = not in_string
+            result.append(char)
+        elif in_string and char == "\n":
+            result.append("\\n")
+        elif in_string and char == "\r":
+            result.append("\\r")
+        elif in_string and char == "\t":
+            result.append("\\t")
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def _strip_markdown_fence(raw: str) -> str:
     raw = raw.strip()
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else raw
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
     if raw.endswith("```"):
         raw = raw[:-3].strip()
-    return json.loads(raw)
+    return raw
+
+
+def _parse_json(raw: str) -> dict:
+    raw = _strip_markdown_fence(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return json.loads(_sanitize_json_strings(raw))
+
+
+PROMPT_BUSCA_DADO_CAPA = """Use o Google Search agora para encontrar UMA notícia, estudo ou relatório publicado nos últimos 12 meses que contenha um dado ou estatística numérica concreta sobre "{tema}".
+
+REGRAS CRÍTICAS:
+- Copie o dado EXATAMENTE como aparece na fonte — sem parafrasear, sem completar, sem extrapolar
+- O dado deve ter um número específico (percentual, valor ou quantidade)
+- A fonte deve ser real e verificável (nome da publicação ou organização)
+- Se não encontrar nada verificável e concreto, retorne {{"dado": null}}
+
+Responda SOMENTE com JSON:
+{{"dado": "texto exato do dado/estatística como aparece na fonte", "fonte": "nome da publicação ou organização", "ano": "2024 ou 2025"}}"""
+
+
+def _buscar_dado_capa(tema: str, empresa_id: str, url_site: str) -> str | None:
+    """Etapa 1: busca isolada via Google Search de um dado real para o slide capa.
+    Retorna 'dado (Fonte, Ano)' ou None se não encontrar nada verificável."""
+    client = _get_client()
+    prompt = PROMPT_BUSCA_DADO_CAPA.format(tema=tema)
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt, config=config
+        )
+        result = _parse_json(response.text)
+        dado = result.get("dado")
+        if dado:
+            fonte = result.get("fonte", "")
+            ano = result.get("ano", "")
+            suffix = f" ({fonte}, {ano})" if fonte else ""
+            dado_formatado = f"{dado}{suffix}"
+            print(f"[LLM] Dado capa verificado: {dado_formatado[:100]}")
+            return dado_formatado
+    except Exception as e:
+        print(f"[LLM] Busca de dado capa falhou ({e}), prosseguindo sem dado verificado.")
+    return None
+
+
+def _bloco_dado_verificado(dado_capa: str | None) -> str:
+    if not dado_capa:
+        return ""
+    return (
+        f'\nDADO VERIFICADO PARA O SLIDE 1 — Copie o texto abaixo LITERALMENTE no campo '
+        f'"texto" do slide 1, sem alterar uma única palavra:\n"{dado_capa}"\n'
+    )
 
 
 def gerar_conteudo(
@@ -322,6 +420,7 @@ def gerar_conteudo(
 ) -> dict:
     client = _get_client()
     bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    dado_capa = _buscar_dado_capa(tema, empresa_id, url_site)
 
     prompt = SYSTEM_PROMPT.format(
         empresa=empresa,
@@ -331,6 +430,7 @@ def gerar_conteudo(
         contexto_compilado=bloco_ctx,
         historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
+        dado_verificado=_bloco_dado_verificado(dado_capa),
     )
 
     print(f"[LLM] Gerando conteúdo para: '{tema}' ({empresa}) com Google Search Grounding...")
@@ -412,6 +512,30 @@ Escreva uma narração de vídeo de 30-45 segundos (~80-100 palavras) sobre "{te
 Responda APENAS com o texto da narração, sem JSON, sem markdown."""
 
 
+PROMPT_SUGESTAO_TEMAS = """Você é um estrategista de conteúdo B2B especializado.
+
+Empresa: {empresa}
+Público-alvo: {publico_alvo}
+
+{contexto_compilado}
+
+{historico_recente}
+
+Use o Google Search para identificar tendências, debates e notícias recentes relevantes para esse público.
+
+Sugira 10 temas originais e específicos para posts de carrossel no LinkedIn/Instagram.
+
+REGRAS OBRIGATÓRIAS:
+- Cada tema deve ser concreto e provocador — evite genéricos como "Inovação" ou "Transformação Digital" sem especificidade
+- Prefira temas com dado surpreendente, tendência recente ou contraponto inesperado que o público compartilharia
+- Cada tema deve ser diferente em ângulo e profundidade dos anteriores listados no histórico
+- Os temas devem ser relevantes para o contexto e setor da empresa
+- Pense em temas que gerem reflexão, não em conteúdo institucional
+
+Retorne SOMENTE um JSON array com exatamente 10 strings:
+["tema 1", "tema 2", "tema 3", "tema 4", "tema 5", "tema 6", "tema 7", "tema 8", "tema 9", "tema 10"]"""
+
+
 def _gerar_texto_simples(prompt: str) -> str:
     """Chama Gemini e retorna texto puro, com fallback sem grounding."""
     client = _get_client()
@@ -428,6 +552,78 @@ def _gerar_texto_simples(prompt: str) -> str:
             model="gemini-2.5-flash", contents=prompt
         )
     return response.text.strip()
+
+
+def sugerir_temas(
+    empresa: str,
+    empresa_id: str,
+    publico_alvo: str,
+    url_site: str = "",
+) -> list[str]:
+    """Usa Gemini com Google Search para sugerir 10 temas relevantes para a empresa."""
+    client = _get_client()
+    bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    bloco_hist = _bloco_historico(empresa_id, limit=10)
+
+    prompt = PROMPT_SUGESTAO_TEMAS.format(
+        empresa=empresa,
+        publico_alvo=publico_alvo,
+        contexto_compilado=bloco_ctx,
+        historico_recente=bloco_hist,
+    )
+
+    print(f"[LLM] Sugerindo temas para '{empresa}'...")
+
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt, config=config
+        )
+    except Exception as e:
+        print(f"[LLM] Grounding indisponível ({e}), sugerindo sem busca...")
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
+
+    raw = _strip_markdown_fence(response.text)
+    try:
+        temas = json.loads(raw)
+    except json.JSONDecodeError:
+        temas = json.loads(_sanitize_json_strings(raw))
+
+    if not isinstance(temas, list):
+        raise ValueError("Resposta inesperada do modelo ao sugerir temas.")
+
+    return [str(t).strip() for t in temas if str(t).strip()][:10]
+
+
+def gerar_legenda(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    slides: list[dict] = None,
+) -> str:
+    """Gera uma legenda curta para acompanhar o carrossel na publicação."""
+    resumo_slides = ""
+    if slides:
+        titulos = [s.get("titulo", "") for s in slides if s.get("titulo")]
+        resumo_slides = f"\nTítulos dos slides: {' | '.join(titulos[:6])}"
+
+    prompt = f"""Você é um estrategista de conteúdo B2B.
+Escreva uma legenda curta para acompanhar um carrossel sobre "{tema}" publicado pela empresa {empresa} para {publico_alvo}.
+{resumo_slides}
+
+A legenda deve:
+- Ter 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
+- Começar com um gancho ou pergunta que convida o leitor a ver o carrossel
+- Tom direto, sem emojis corporativos, máx 220 palavras
+- Ser em português brasileiro
+
+Responda APENAS com o texto da legenda, sem explicações."""
+    return _gerar_texto_simples(prompt)
 
 
 def gerar_linkedin(
@@ -512,8 +708,53 @@ def gerar_blog(
 
 
 # ─────────────────────────────────────────────
-# Carrossel Tweet (usa o mesmo prompt do carrossel regular)
+# Carrossel Tweet
 # ─────────────────────────────────────────────
+
+ESTRUTURA_CARROSSEL_TWEET = """
+Slide 1 — Gancho/Capa: título impactante (máx 6 palavras). O TEXTO deve ser EXATAMENTE o DADO VERIFICADO fornecido acima — copie-o literalmente, sem alterar uma palavra. Se não houver DADO VERIFICADO, o texto deve ser uma frase de impacto conceitual curta. Máx 1 frase.
+Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
+Slide 3 — Causa Raiz: por que o problema persiste? Título curto + texto conceitual (1-2 frases, SEM dados, SEM cases, texto corrido simples).
+Slide 4 — Impactos: liste 3 a 5 consequências usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
+Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando. Texto conceitual, sem dados ou cases.
+Slide 6 — A Virada: qual mudança de mentalidade ou abordagem muda o jogo. Título assertivo + texto conceitual (1-2 frases, SEM dados, SEM cases). prompt_imagem deve ser "" (este slide não usa imagem).
+Slide 7 — O que funciona: princípios ou práticas que realmente resolvem. Texto conceitual, sem dados ou cases.
+Slide 8 — O que considerar: fatores-chave para avaliar qual caminho faz sentido. Texto conceitual, sem dados ou cases.
+Slide 9 — Conclusão/CTA: síntese do raciocínio em 1-2 frases que encerram o argumento. Texto conceitual.
+"""
+
+PROMPT_CARROSSEL_TWEET = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
+Você produz conteúdo editorial para a {empresa}.
+O público-alvo são {publico_alvo}.
+Todo o conteúdo deve ser em português brasileiro.
+{contexto_compilado}
+{historico_recente}
+{dado_verificado}
+Gere um Carrossel Tweet de 9 slides sobre o tema "{tema}":
+{estrutura}
+
+REGRA CENTRAL: Apenas o slide 1 pode conter dados, estatísticas ou referências a casos reais — e somente se o tema for baseado em notícia ou dado concreto, com fonte obrigatória. Todos os demais slides (2 a 9) devem ser 100% conceituais: sem números, sem percentuais, sem nomes de empresas como case, sem fontes. O valor está no raciocínio, não nos dados.
+
+Cada slide deve ter:
+- "titulo": título curto e impactante (máx 8 palavras; slide 1 máx 6 palavras)
+- "texto": corpo conforme a instrução de cada slide — direto e objetivo, máx 2-3 frases curtas
+- "prompt_imagem": descrição objetiva em inglês da cena de fundo (1-2 frases). REGRAS: (a) cenas físicas concretas, visualmente distintas entre slides; (b) PROIBIDO qualquer texto, letras, números ou elementos tipográficos; (c) vazio ("") no slide 6.
+
+Gere também uma legenda para acompanhar o carrossel na publicação:
+- 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
+- Começa com um gancho ou pergunta que convida o leitor a ver o carrossel
+- Tom direto, sem emojis corporativos, máx 220 palavras
+
+Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
+Estrutura exata:
+{{
+  "carrossel": [
+    {{"slide": 1, "titulo": "...", "texto": "...", "prompt_imagem": "..."}},
+    ... (9 slides)
+  ],
+  "legenda": "..."
+}}"""
+
 
 def gerar_carrossel_tweet(
     tema: str,
@@ -521,10 +762,48 @@ def gerar_carrossel_tweet(
     empresa_id: str = "tecnosolve",
     publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
     url_site: str = "",
-) -> list[dict]:
-    """Gera 9 slides para o Carrossel Tweet usando o mesmo prompt do carrossel regular."""
-    print(f"[LLM] Gerando Carrossel Tweet (via prompt padrão) para: '{tema}' ({empresa})...")
-    return gerar_slides_carrossel(tema, empresa, empresa_id, publico_alvo, url_site)
+) -> dict:
+    """Gera 9 slides + legenda para o Carrossel Tweet com prompt próprio (sem dados exceto slide 1)."""
+    client = _get_client()
+    bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    dado_capa = _buscar_dado_capa(tema, empresa_id, url_site)
+
+    prompt = PROMPT_CARROSSEL_TWEET.format(
+        empresa=empresa,
+        publico_alvo=publico_alvo,
+        tema=tema,
+        estrutura=ESTRUTURA_CARROSSEL_TWEET,
+        contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id),
+        dado_verificado=_bloco_dado_verificado(dado_capa),
+    )
+
+    print(f"[LLM] Gerando Carrossel Tweet para: '{tema}' ({empresa})...")
+
+    config = types.GenerateContentConfig(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+
+    for tentativa in range(3):
+        try:
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt, config=config
+                )
+            except Exception as e:
+                print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt
+                )
+            conteudo = _parse_json(response.text)
+            slides = conteudo.get("carrossel", [])
+            if slides:
+                return {"slides": slides, "legenda": conteudo.get("legenda", "")}
+            raise ValueError("JSON retornado sem campo 'carrossel'")
+        except Exception as e:
+            print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
+
+    raise RuntimeError("Falha ao gerar Carrossel Tweet após 3 tentativas.")
 
 
 # ─────────────────────────────────────────────
@@ -532,13 +811,13 @@ def gerar_carrossel_tweet(
 # ─────────────────────────────────────────────
 
 ESTRUTURA_CARROSSEL_MISTO_DD = """
-Slide 1 — Capa/Gancho: título (máx 6 palavras, gancho imediato) + texto (1 frase curta, máx 15 palavras, com dado ou estatística marcante, cite fonte e ano). prompt_imagem: cena física de negócios/logística sem texto.
-Slide 2 — Contexto: apresente o problema com dado concreto. Título curto + texto (1-2 frases diretas, máx 25 palavras, com dado e fonte). prompt_imagem: cena contextual relacionada ao problema.
-Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples). prompt_imagem: cena que ilustre a causa.
-Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras concretas usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). Use dados reais com fonte. prompt_imagem: cena de ambiente impactado negativamente.
-Slide 5 — A Virada: destaque um insight ou dado que muda a perspectiva. Título assertivo + texto (1-2 frases diretas, máx 30 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, com case real e resultado mensurável, cite fonte). Sem imagem (prompt_imagem vazio).
-Slide 6 — O que Funciona: liste 3 a 5 práticas ou resultados usando EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). Use dados reais. prompt_imagem: cena positiva/produtiva.
-Slide 7 — Antes vs Depois: o campo "texto" deve ter EXATAMENTE este formato: "ANTES: [descrição do estado problemático em 1 frase]\n---\nDEPOIS: [descrição do estado melhorado em 1 frase com dado e fonte]". O título deve ser o tema central da comparação (máx 6 palavras). prompt_imagem: cena de transformação ou ambiente melhorado.
+Slide 1 — Capa/Gancho: APENAS título (máx 18 palavras, gancho imediato e impactante). NÃO gere texto para este slide (deixe "texto" como string vazia ""). prompt_imagem: cena física de negócios/logística sem texto.
+Slide 2 — Contexto: apresente o problema de forma conceitual. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM dados ou números, foco no conceito e na realidade do problema). prompt_imagem: cena contextual relacionada ao problema.
+Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, foco na ideia central sem dados). prompt_imagem: cena que ilustre a causa.
+Slide 4 — Impactos: liste 3 a 5 consequências operacionais conceituais usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). SEM números, percentuais ou fontes — apenas os conceitos e impactos. prompt_imagem: cena de ambiente impactado negativamente.
+Slide 5 — A Virada: destaque um insight que muda a perspectiva. Título assertivo + texto (1-2 frases diretas, máx 30 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, SEM dados, percentuais ou fontes — foco na ideia transformadora). Sem imagem (prompt_imagem vazio).
+Slide 6 — O que Funciona: liste 3 a 5 práticas ou abordagens usando EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). SEM números ou fontes — apenas as práticas e conceitos. prompt_imagem: cena positiva/produtiva.
+Slide 7 — Antes vs Depois: o campo "texto" deve ter EXATAMENTE este formato: "ANTES: [descrição do estado problemático em 1 frase]\n---\nDEPOIS: [descrição do estado melhorado em 1 frase]". SEM dados ou fontes — foque na transformação conceitual. O título deve ser o tema central da comparação (máx 6 palavras). prompt_imagem: cena de transformação ou ambiente melhorado.
 Slide 8 — CTA: título fixo "SE VOCÊ QUER UMA OPERAÇÃO 5 ESTRELAS, TESTE AGORA O DELIVERYDASH." + texto (descrição gerada, 1-2 frases, máx 25 palavras). prompt_imagem: um prato delicioso de restaurante profissional.
 """
 
@@ -554,9 +833,14 @@ Gere um Carrossel Misto DD de 8 slides sobre o tema "{tema}":
 {estrutura}
 
 Cada slide deve ter:
-- "titulo": título curto e impactante (máx 8 palavras; slides 1, 5 e 8 devem ter máx 6 palavras)
-- "texto": corpo do slide conforme a instrução de cada slide — seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante
+- "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 18 palavras; slides 5 e 8 devem ter máx 6 palavras)
+- "texto": corpo do slide conforme a instrução de cada slide — seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante; NÃO use dados numéricos, percentuais, estatísticas ou citações de fontes — foque apenas nos conceitos e ideias
 - "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cenas visualmente distintas entre slides; (b) cenas físicas concretas com pessoas, objetos ou ambientes reais; (c) ABSOLUTAMENTE PROIBIDO: qualquer texto, letras, números, letreiros, telas com escrita ou elementos tipográficos; (d) deixe vazio ("") no slide 5.
+
+Gere também uma legenda para acompanhar o carrossel na publicação:
+- 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
+- Começa com um gancho ou pergunta que convida o leitor a ver o carrossel
+- Tom direto, sem emojis corporativos, máx 220 palavras
 
 Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
 Estrutura exata:
@@ -564,7 +848,8 @@ Estrutura exata:
   "slides": [
     {{"slide": 1, "titulo": "...", "texto": "...", "prompt_imagem": "..."}},
     ... (8 slides)
-  ]
+  ],
+  "legenda": "..."
 }}"""
 
 
@@ -574,8 +859,8 @@ def gerar_carrossel_misto_dd(
     empresa_id: str = "tecnosolve",
     publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
     url_site: str = "",
-) -> list[dict]:
-    """Gera 8 slides para o Carrossel Misto DD."""
+) -> dict:
+    """Gera 8 slides + legenda para o Carrossel Misto DD."""
     client = _get_client()
     bloco_ctx = _bloco_contexto(empresa_id, url_site)
 
@@ -612,7 +897,7 @@ def gerar_carrossel_misto_dd(
             conteudo = _parse_json(response.text)
             slides = conteudo.get("slides", [])
             if slides:
-                return slides
+                return {"slides": slides, "legenda": conteudo.get("legenda", "")}
             raise ValueError("JSON retornado sem campo 'slides'")
         except Exception as e:
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
