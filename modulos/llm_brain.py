@@ -13,14 +13,14 @@ CONTEXTOS_DIR  = Path("config/contextos")
 HISTORICO_DIR  = Path("config/historico")
 
 ESTRUTURA_CARROSSEL = """
-Slide 1 — Gancho/Capa: O TÍTULO deve ser uma frase de no máximo 6 palavras como gancho direto do DADO VERIFICADO. O TEXTO deve ser EXATAMENTE o DADO VERIFICADO fornecido acima — copie-o literalmente, sem alterar uma palavra. Se não houver DADO VERIFICADO, o texto deve ser uma frase de impacto conceitual curta.
-Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato de bullet ✓ (um por linha, iniciando com o caractere ✓ seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
+Slide 1 — Gancho/Capa: O TÍTULO deve ser uma frase de no máximo 6 palavras — gancho forte, provocador, que gere curiosidade. O TEXTO deve ser uma frase curta e impactante (máx 15 palavras) que amplifique o gancho do título. SEM dados, SEM estatísticas, SEM fontes — apenas conceito e impacto.
+Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato de bullet - (um por linha, iniciando com o caractere - seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
 Slide 3 — Causa Raiz: por que o problema persiste? Título curto + texto conceitual (1-2 frases, SEM dados, SEM cases, texto corrido simples).
 Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Itens conceituais, sem números ou percentuais, máx 12 palavras cada.
 Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando. Texto conceitual, sem dados.
 Slide 6 — Insight central: o princípio ou mudança de perspectiva que faz a diferença. Título assertivo + texto conceitual (1-2 frases). prompt_imagem deve ser "" (este slide não usa imagem).
 Slide 7 — O que está por trás: categoria de solução e princípio que explica o resultado — sem receita, sem produto específico. Texto conceitual.
-Slide 8 — O que diferencia quem resolve: fatores que separam quem supera o problema de quem continua preso nele. Título assertivo + texto conceitual (1-2 frases). prompt_imagem: cena física relacionada ao contexto, sem texto.
+Slide 8 — Quem resolve vs. quem não resolve: slide split com dois painéis lado a lado. Painel ESQUERDO = lado bom (azul), painel DIREITO = lado ruim (escuro). Título assertivo (máx 6 palavras) que resume o contraste. O campo "texto" deve ter EXATAMENTE este formato: "[descrição de quem resolve — 1 frase, estado positivo]\n---\n[descrição de quem não resolve — 1 frase, estado problemático]". SEM dados. O campo "prompt_imagem" deve ter EXATAMENTE este formato: "[cena do painel esquerdo — ambiente moderno, organizado e produtivo]\n---\n[cena do painel direito — ambiente desorganizado, caótico ou degradado]". As duas cenas devem ser visivelmente diferentes entre si.
 Slide 9 — O que considerar: fatores-chave para avaliar qual caminho faz sentido para o contexto de cada empresa. Texto conceitual.
 """
 
@@ -50,6 +50,14 @@ PADRÃO DE QUALIDADE OBRIGATÓRIO:
 - Tom jornalístico e consultivo: traga o fato, o resultado, e o princípio por trás. Não prescreva receita.
 - PROIBIDO: CTAs, menções à empresa produtora, convites para contato, frases de venda, listas de ferramentas como solução
 """
+
+AVISO_SEM_GROUNDING = """
+
+⚠️ INSTRUÇÃO PRIORITÁRIA — MODO SEM VERIFICAÇÃO DE DADOS:
+O Google Search não está disponível nesta geração. Portanto, IGNORE qualquer instrução anterior que peça dados, estatísticas, percentuais, anos, fontes ou casos reais com números.
+Todo o conteúdo — incluindo o slide 1, a introdução e os parágrafos de blog — deve ser 100% conceitual: raciocínio estratégico, frameworks, perspectivas e argumentos originais, sem nenhum dado numérico ou referência a pesquisa específica.
+Esta instrução tem prioridade absoluta sobre qualquer regra anterior no prompt."""
+
 
 SYSTEM_PROMPT = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
 Você produz conteúdo editorial para a {empresa}.
@@ -343,6 +351,20 @@ def _sanitize_json_strings(raw: str) -> str:
     return "".join(result)
 
 
+def _get_response_text(response) -> str | None:
+    """Extrai texto de uma resposta Gemini de forma robusta.
+    O response.text pode retornar None com grounding mesmo quando há conteúdo em parts."""
+    if response.text:
+        return response.text
+    try:
+        for part in (response.candidates[0].content.parts or []):
+            if hasattr(part, "text") and part.text:
+                return part.text
+    except Exception:
+        pass
+    return None
+
+
 def _strip_markdown_fence(raw: str) -> str:
     raw = raw.strip()
     if raw.startswith("```"):
@@ -356,12 +378,20 @@ def _strip_markdown_fence(raw: str) -> str:
     return raw
 
 
+def _fix_single_quoted_keys(raw: str) -> str:
+    """Converte chaves JSON com aspas simples para aspas duplas: 'key': -> "key":"""
+    return re.sub(r"([{\[,]\s*)'([^']*)'(\s*:)", r'\1"\2"\3', raw)
+
+
 def _parse_json(raw: str) -> dict:
     raw = _strip_markdown_fence(raw)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        return json.loads(_sanitize_json_strings(raw))
+        try:
+            return json.loads(_sanitize_json_strings(raw))
+        except json.JSONDecodeError:
+            return json.loads(_sanitize_json_strings(_fix_single_quoted_keys(raw)))
 
 
 PROMPT_BUSCA_DADO_CAPA = """Use o Google Search agora para encontrar UMA notícia, estudo ou relatório publicado nos últimos 12 meses que contenha um dado ou estatística numérica concreta sobre "{tema}".
@@ -382,13 +412,20 @@ def _buscar_dado_capa(tema: str, empresa_id: str, url_site: str) -> str | None:
     client = _get_client()
     prompt = PROMPT_BUSCA_DADO_CAPA.format(tema=tema)
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash", contents=prompt, config=config
         )
-        result = _parse_json(response.text)
+        _text = _get_response_text(response)
+        if not _text:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash", contents=prompt
+            )
+            _text = _get_response_text(response)
+        result = _parse_json(_text)
         dado = result.get("dado")
         if dado:
             fonte = result.get("fonte", "")
@@ -420,7 +457,6 @@ def gerar_conteudo(
 ) -> dict:
     client = _get_client()
     bloco_ctx = _bloco_contexto(empresa_id, url_site)
-    dado_capa = _buscar_dado_capa(tema, empresa_id, url_site)
 
     prompt = SYSTEM_PROMPT.format(
         empresa=empresa,
@@ -430,13 +466,14 @@ def gerar_conteudo(
         contexto_compilado=bloco_ctx,
         historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
-        dado_verificado=_bloco_dado_verificado(dado_capa),
+        dado_verificado="",
     )
 
     print(f"[LLM] Gerando conteúdo para: '{tema}' ({empresa}) com Google Search Grounding...")
 
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
     for tentativa in range(3):
@@ -451,10 +488,17 @@ def gerar_conteudo(
                 print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
                 response = client.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=prompt,
+                    contents=prompt + AVISO_SEM_GROUNDING,
                 )
 
-            conteudo = _parse_json(response.text)
+            _text = _get_response_text(response)
+            if not _text:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
+                )
+                _text = _get_response_text(response)
+
+            conteudo = _parse_json(_text)
             conteudo["empresa"] = empresa
             conteudo["tema"] = tema
             conteudo["publico_alvo"] = publico_alvo
@@ -512,35 +556,25 @@ Escreva uma narração de vídeo de 30-45 segundos (~80-100 palavras) sobre "{te
 Responda APENAS com o texto da narração, sem JSON, sem markdown."""
 
 
-PROMPT_SUGESTAO_TEMAS = """Você é um estrategista de conteúdo B2B especializado.
-
-Empresa: {empresa}
-Público-alvo: {publico_alvo}
+PROMPT_SUGESTAO_TEMAS = """Use o Google Search agora para buscar tendências e notícias recentes sobre tecnologia B2B, jurídico e gestão relevantes para {publico_alvo} da empresa {empresa}.
 
 {contexto_compilado}
 
 {historico_recente}
 
-Use o Google Search para identificar tendências, debates e notícias recentes relevantes para esse público.
+Com base nos resultados encontrados, escreva um parágrafo de análise sobre o que está em debate no setor. Depois liste exatamente 10 temas concretos e provocadores para posts de carrossel no LinkedIn — sem genéricos, com ângulo específico e surpreendente.
 
-Sugira 10 temas originais e específicos para posts de carrossel no LinkedIn/Instagram.
-
-REGRAS OBRIGATÓRIAS:
-- Cada tema deve ser concreto e provocador — evite genéricos como "Inovação" ou "Transformação Digital" sem especificidade
-- Prefira temas com dado surpreendente, tendência recente ou contraponto inesperado que o público compartilharia
-- Cada tema deve ser diferente em ângulo e profundidade dos anteriores listados no histórico
-- Os temas devem ser relevantes para o contexto e setor da empresa
-- Pense em temas que gerem reflexão, não em conteúdo institucional
-
-Retorne SOMENTE um JSON array com exatamente 10 strings:
-["tema 1", "tema 2", "tema 3", "tema 4", "tema 5", "tema 6", "tema 7", "tema 8", "tema 9", "tema 10"]"""
+Retorne no formato:
+ANÁLISE: <parágrafo>
+TEMAS: ["tema 1", "tema 2", "tema 3", "tema 4", "tema 5", "tema 6", "tema 7", "tema 8", "tema 9", "tema 10"]"""
 
 
 def _gerar_texto_simples(prompt: str) -> str:
     """Chama Gemini e retorna texto puro, com fallback sem grounding."""
     client = _get_client()
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     try:
         response = client.models.generate_content(
@@ -549,9 +583,16 @@ def _gerar_texto_simples(prompt: str) -> str:
     except Exception as e:
         print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
         response = client.models.generate_content(
-            model="gemini-2.5-flash", contents=prompt
+            model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
         )
-    return response.text.strip()
+    _text = _get_response_text(response)
+    if not _text:
+        print("[LLM] response.text vazio com grounding, retentando sem busca...")
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
+        )
+        _text = _get_response_text(response)
+    return _text.strip()
 
 
 def sugerir_temas(
@@ -575,7 +616,8 @@ def sugerir_temas(
     print(f"[LLM] Sugerindo temas para '{empresa}'...")
 
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     try:
         response = client.models.generate_content(
@@ -584,10 +626,26 @@ def sugerir_temas(
     except Exception as e:
         print(f"[LLM] Grounding indisponível ({e}), sugerindo sem busca...")
         response = client.models.generate_content(
-            model="gemini-2.5-flash", contents=prompt
+            model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
         )
 
-    raw = _strip_markdown_fence(response.text)
+    _text = _get_response_text(response)
+    if not _text:
+        print("[LLM] response.text vazio com grounding, retentando sem busca...")
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
+        )
+        _text = _get_response_text(response)
+
+    raw = _text.strip()
+    # Extrai o JSON array da resposta: busca especificamente por ["..."]
+    idx = raw.find('["')
+    if idx != -1:
+        end = raw.rfind('"]')
+        if end > idx:
+            raw = raw[idx:end + 2]
+    else:
+        raw = _strip_markdown_fence(raw)
     try:
         temas = json.loads(raw)
     except json.JSONDecodeError:
@@ -688,7 +746,8 @@ def gerar_blog(
     print(f"[LLM] Gerando blog para: '{tema}' ({empresa}) com Google Search Grounding...")
 
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
     try:
@@ -701,10 +760,17 @@ def gerar_blog(
         print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=prompt + AVISO_SEM_GROUNDING,
         )
 
-    return response.text.strip()
+    _text = _get_response_text(response)
+    if not _text:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
+        )
+        _text = _get_response_text(response)
+
+    return _text.strip()
 
 
 # ─────────────────────────────────────────────
@@ -712,8 +778,8 @@ def gerar_blog(
 # ─────────────────────────────────────────────
 
 ESTRUTURA_CARROSSEL_TWEET = """
-Slide 1 — Gancho/Capa: título impactante (máx 6 palavras). O TEXTO deve ser EXATAMENTE o DADO VERIFICADO fornecido acima — copie-o literalmente, sem alterar uma palavra. Se não houver DADO VERIFICADO, o texto deve ser uma frase de impacto conceitual curta. Máx 1 frase.
-Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
+Slide 1 — Gancho/Capa: título impactante (máx 6 palavras) — gancho forte, provocador, que gere curiosidade. O TEXTO deve ser uma frase curta e impactante (máx 15 palavras) que amplifique o gancho. SEM dados, SEM estatísticas, SEM fontes. Máx 1 frase.
+Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato - (um por linha, iniciando com - seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
 Slide 3 — Causa Raiz: por que o problema persiste? Título curto + texto conceitual (1-2 frases, SEM dados, SEM cases, texto corrido simples).
 Slide 4 — Impactos: liste 3 a 5 consequências usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
 Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando. Texto conceitual, sem dados ou cases.
@@ -766,7 +832,6 @@ def gerar_carrossel_tweet(
     """Gera 9 slides + legenda para o Carrossel Tweet com prompt próprio (sem dados exceto slide 1)."""
     client = _get_client()
     bloco_ctx = _bloco_contexto(empresa_id, url_site)
-    dado_capa = _buscar_dado_capa(tema, empresa_id, url_site)
 
     prompt = PROMPT_CARROSSEL_TWEET.format(
         empresa=empresa,
@@ -775,13 +840,14 @@ def gerar_carrossel_tweet(
         estrutura=ESTRUTURA_CARROSSEL_TWEET,
         contexto_compilado=bloco_ctx,
         historico_recente=_bloco_historico(empresa_id),
-        dado_verificado=_bloco_dado_verificado(dado_capa),
+        dado_verificado="",
     )
 
     print(f"[LLM] Gerando Carrossel Tweet para: '{tema}' ({empresa})...")
 
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
     for tentativa in range(3):
@@ -793,9 +859,15 @@ def gerar_carrossel_tweet(
             except Exception as e:
                 print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash", contents=prompt
+                    model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
                 )
-            conteudo = _parse_json(response.text)
+            _text = _get_response_text(response)
+            if not _text:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
+                )
+                _text = _get_response_text(response)
+            conteudo = _parse_json(_text)
             slides = conteudo.get("carrossel", [])
             if slides:
                 return {"slides": slides, "legenda": conteudo.get("legenda", "")}
@@ -877,7 +949,8 @@ def gerar_carrossel_misto_dd(
     print(f"[LLM] Gerando Carrossel Misto DD para: '{tema}' ({empresa})...")
 
     config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
 
     for tentativa in range(3):
@@ -892,9 +965,15 @@ def gerar_carrossel_misto_dd(
                 print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
                 response = client.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=prompt,
+                    contents=prompt + AVISO_SEM_GROUNDING,
                 )
-            conteudo = _parse_json(response.text)
+            _text = _get_response_text(response)
+            if not _text:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
+                )
+                _text = _get_response_text(response)
+            conteudo = _parse_json(_text)
             slides = conteudo.get("slides", [])
             if slides:
                 return {"slides": slides, "legenda": conteudo.get("legenda", "")}

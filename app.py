@@ -593,7 +593,7 @@ with aba_gerar:
         if tweet_slides:
             st.divider()
             st.subheader("Carrossel Tweet")
-            for slide in tweet_slides:
+            for slide in tweet_slides.get("slides", []):
                 with st.expander(f"Slide {slide['slide']} — {slide['titulo']}"):
                     st.write(slide["texto"])
 
@@ -601,7 +601,7 @@ with aba_gerar:
         if misto_dd_slides:
             st.divider()
             st.subheader("Carrossel Misto DD")
-            for slide in misto_dd_slides:
+            for slide in misto_dd_slides.get("slides", []):
                 with st.expander(f"Slide {slide['slide']} — {slide['titulo']}"):
                     st.write(slide["texto"])
 
@@ -909,6 +909,86 @@ with aba_conteudos:
                 if st.session_state.get(_gdoc_key):
                     _col_gdoc_link.markdown(f"📝 [Abrir documento]({st.session_state[_gdoc_key]})")
 
+                # ── Gerar conteúdos escritos de carrosseis existentes ─────────
+                _key_esc_exp  = f"escritos_exp_{emp['id']}"
+                _key_esc_sel  = f"escritos_sel_{emp['id']}"
+
+                if st.button("✍️ Gerar conteúdos escritos", key=f"btn_escritos_{emp['id']}", width='stretch'):
+                    st.session_state[_key_esc_exp] = not st.session_state.get(_key_esc_exp, False)
+                    st.session_state[_key_esc_sel] = []
+
+                if st.session_state.get(_key_esc_exp):
+                    _docs_base = []
+                    for _t in ["carrossel", "carrossel_tweet", "carrossel_misto_dd"]:
+                        for _d in listar_conteudos(emp["id"], _t):
+                            _docs_base.append(_d)
+
+                    if not _docs_base:
+                        st.caption("Nenhum carrossel disponível como base.")
+                    else:
+                        st.caption("Selecione os conteúdos que deseja usar como base:")
+                        _sel_ids = st.session_state.get(_key_esc_sel, [])
+                        for _doc in _docs_base:
+                            _cid  = str(_doc["_id"])
+                            _data = _doc["criado_em"].strftime("%d/%m/%Y") if _doc.get("criado_em") else "—"
+                            _tlabel = TIPOS.get(_doc.get("tipo", ""), "")
+                            _checked = st.checkbox(
+                                f"{_doc['tema']}  ·  {_tlabel}  ·  {_data}",
+                                value=_cid in _sel_ids,
+                                key=f"ck_esc_{emp['id']}_{_cid}",
+                            )
+                            if _checked and _cid not in _sel_ids:
+                                _sel_ids.append(_cid)
+                            elif not _checked and _cid in _sel_ids:
+                                _sel_ids.remove(_cid)
+                        st.session_state[_key_esc_sel] = _sel_ids
+
+                        _esc_c1, _esc_c2, _esc_c3 = st.columns([1, 1, 2])
+                        _opt_esc_li  = _esc_c1.checkbox("Post LinkedIn",   value=True,  key=f"opt_esc_li_{emp['id']}")
+                        _opt_esc_vid = _esc_c2.checkbox("Narração Vídeo",  value=True,  key=f"opt_esc_vid_{emp['id']}")
+
+                        if st.button(
+                            f"Gerar para {len(_sel_ids)} selecionado(s)",
+                            key=f"btn_esc_gerar_{emp['id']}",
+                            disabled=not _sel_ids or (not _opt_esc_li and not _opt_esc_vid),
+                            width='stretch',
+                        ):
+                            _docs_map = {str(_d["_id"]): _d for _d in _docs_base}
+                            for _cid in _sel_ids:
+                                _doc = _docs_map.get(_cid)
+                                if not _doc:
+                                    continue
+                                _tema_doc = _doc["tema"]
+                                if _opt_esc_li:
+                                    with st.spinner(f"Gerando LinkedIn — {_tema_doc[:40]}..."):
+                                        try:
+                                            _txt = llm_brain.gerar_linkedin(
+                                                tema=_tema_doc,
+                                                empresa=emp["nome"],
+                                                empresa_id=emp["id"],
+                                                publico_alvo=emp["publico_alvo"],
+                                                url_site=emp.get("url_site", ""),
+                                            )
+                                            salvar_linkedin(_txt, emp["id"], _tema_doc, emp)
+                                        except Exception as e:
+                                            st.error(f"Erro LinkedIn '{_tema_doc[:30]}': {e}")
+                                if _opt_esc_vid:
+                                    with st.spinner(f"Gerando Narração — {_tema_doc[:40]}..."):
+                                        try:
+                                            _txt = llm_brain.gerar_narracao(
+                                                tema=_tema_doc,
+                                                empresa=emp["nome"],
+                                                empresa_id=emp["id"],
+                                                publico_alvo=emp["publico_alvo"],
+                                                url_site=emp.get("url_site", ""),
+                                            )
+                                            salvar_video(_txt, emp["id"], _tema_doc, emp)
+                                        except Exception as e:
+                                            st.error(f"Erro Narração '{_tema_doc[:30]}': {e}")
+                            st.success("Conteúdos gerados com sucesso!")
+                            st.session_state[_key_esc_exp] = False
+                            st.rerun()
+
                 def _tab_label(tipo: str) -> str:
                     n = contagens.get(tipo, 0)
                     return f"{TIPOS[tipo]} ({n})" if n else TIPOS[tipo]
@@ -951,6 +1031,12 @@ with aba_conteudos:
                         cid  = doc["_id"]
                         stem = doc.get("stem", cid)
                         data = doc["criado_em"].strftime("%d/%m/%Y %H:%M") if doc.get("criado_em") else "—"
+                        if doc.get("status", {}).get("drive_enviado"):
+                            _mid = f"dm_{cid}"
+                            st.markdown(
+                                f'<div id="{_mid}"></div><style>div[data-testid="element-container"]:has(#{_mid}) + div[data-testid="element-container"] div[data-testid="stExpander"]{{background-color:rgba(34,197,94,0.07)!important;border-radius:8px;}}</style>',
+                                unsafe_allow_html=True,
+                            )
                         with st.expander(f"{doc['tema']}  ·  {data}"):
                             _checklist_status(doc)
                             col_del, col_regen_texto, _esp = st.columns([1, 2, 3])
@@ -1084,6 +1170,12 @@ with aba_conteudos:
                         cid_tw  = doc_tw["_id"]
                         stem_tw = doc_tw.get("stem", cid_tw)
                         data_tw = doc_tw["criado_em"].strftime("%d/%m/%Y %H:%M") if doc_tw.get("criado_em") else "—"
+                        if doc_tw.get("status", {}).get("drive_enviado"):
+                            _mid_tw = f"dm_{cid_tw}"
+                            st.markdown(
+                                f'<div id="{_mid_tw}"></div><style>div[data-testid="element-container"]:has(#{_mid_tw}) + div[data-testid="element-container"] div[data-testid="stExpander"]{{background-color:rgba(34,197,94,0.07)!important;border-radius:8px;}}</style>',
+                                unsafe_allow_html=True,
+                            )
                         with st.expander(f"{doc_tw['tema']}  ·  {data_tw}"):
                             _checklist_status(doc_tw)
                             col_del_tw, col_regen_tw, _esp_tw = st.columns([1, 2, 3])
@@ -1220,6 +1312,12 @@ with aba_conteudos:
                         cid_mdd  = doc_mdd["_id"]
                         stem_mdd = doc_mdd.get("stem", cid_mdd)
                         data_mdd = doc_mdd["criado_em"].strftime("%d/%m/%Y %H:%M") if doc_mdd.get("criado_em") else "—"
+                        if doc_mdd.get("status", {}).get("drive_enviado"):
+                            _mid_mdd = f"dm_{cid_mdd}"
+                            st.markdown(
+                                f'<div id="{_mid_mdd}"></div><style>div[data-testid="element-container"]:has(#{_mid_mdd}) + div[data-testid="element-container"] div[data-testid="stExpander"]{{background-color:rgba(34,197,94,0.07)!important;border-radius:8px;}}</style>',
+                                unsafe_allow_html=True,
+                            )
                         with st.expander(f"{doc_mdd['tema']}  ·  {data_mdd}"):
                             _checklist_status(doc_mdd)
                             col_del_mdd, col_regen_mdd, _esp_mdd = st.columns([1, 2, 3])

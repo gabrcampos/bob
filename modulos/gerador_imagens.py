@@ -423,9 +423,29 @@ def _gerar_fundo(prompt_imagem: str, estilo_imagem: str, cores: list[dict]) -> b
 
 
 def _gerar_fundo_d4(prompt_imagem: str, estilo: str, cores: list[dict]) -> bytes:
-    """Para D4: gera uma imagem completa 1080×1350; compor_slide divide esq/dir via crop PIL."""
-    p = prompt_imagem.split("\n---\n")[0].strip() or prompt_imagem
-    return _gerar_fundo(p, estilo, cores)
+    """Para D4: gera duas imagens distintas (esq e dir) e as combina numa 1080×1350.
+    compor_slide divide esq/dir via crop — cada metade terá visual diferente."""
+    partes = prompt_imagem.split("\n---\n")
+    p_esq = partes[0].strip() or prompt_imagem
+    p_dir = partes[1].strip() if len(partes) > 1 else prompt_imagem
+
+    bytes_esq = _gerar_fundo(p_esq, estilo, cores)
+    bytes_dir = _gerar_fundo(p_dir, estilo, cores)
+
+    img_esq = Image.open(BytesIO(bytes_esq)).convert("RGB")
+    img_dir = Image.open(BytesIO(bytes_dir)).convert("RGB")
+
+    HALF_W = SLIDE_W // 2
+    img_esq = _crop_cover(img_esq, HALF_W, SLIDE_H)
+    img_dir = _crop_cover(img_dir, HALF_W, SLIDE_H)
+
+    combinada = Image.new("RGB", (SLIDE_W, SLIDE_H))
+    combinada.paste(img_esq, (0, 0))
+    combinada.paste(img_dir, (HALF_W, 0))
+
+    buf = BytesIO()
+    combinada.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 # ─────────────────────────────────────────────
@@ -864,10 +884,10 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
             canvas.paste(Image.new("RGBA", (HALF_W, SLIDE_H), (30, 30, 35, 255)), (0, 0))
             canvas.paste(Image.new("RGBA", (HALF_W, SLIDE_H), (*cor_primaria, 255)), (HALF_W, 0))
 
-        # Overlay escuro esquerda, cor primária direita (legibilidade do texto)
+        # Overlay: cor primária esquerda (lado bom), escuro direita (lado ruim)
         canvas_rgba = canvas.convert("RGBA")
-        canvas_rgba.alpha_composite(Image.new("RGBA", (HALF_W, SLIDE_H), (0, 0, 0, 160)), (0, 0))
-        canvas_rgba.alpha_composite(Image.new("RGBA", (HALF_W, SLIDE_H), (*cor_primaria, 140)), (HALF_W, 0))
+        canvas_rgba.alpha_composite(Image.new("RGBA", (HALF_W, SLIDE_H), (*cor_primaria, 140)), (0, 0))
+        canvas_rgba.alpha_composite(Image.new("RGBA", (HALF_W, SLIDE_H), (0, 0, 0, 160)), (HALF_W, 0))
         canvas = canvas_rgba.convert("RGB")
         draw = ImageDraw.Draw(canvas)
 
@@ -1121,7 +1141,11 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
     y_max  = Y_SAFE_BOTTOM
 
     # ─── Escolhe tamanho de fonte ─────────────────────────────────────────────
-    _CANDIDATOS = [(62, 34), (54, 30), (46, 26), (38, 22), (32, 18), (26, 15), (22, 13)]
+    # Slide 7 (variantes C/split) tem max_w de ~metade do slide; reduz título para evitar overflow
+    if slide_num == 7 and variante in ("C", "C1", "C2", "C3"):
+        _CANDIDATOS = [(40, 30), (34, 26), (28, 22), (24, 18), (20, 15), (18, 13)]
+    else:
+        _CANDIDATOS = [(62, 34), (54, 30), (46, 26), (38, 22), (32, 18), (26, 15), (22, 13)]
     f_titulo = f_corpo = None
     linhas_titulo = linhas_corpo = []
     h_titulo_total = h_corpo_total = 0

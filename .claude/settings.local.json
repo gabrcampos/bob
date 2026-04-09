@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile modulos/gerador_imagens.py)"
+      "Bash(python -m py_compile modulos/gerador_imagens.py)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebSearch",
+      "WebFetch(domain:aitoolanalysis.com)",
+      "WebFetch(domain:www.gradually.ai)",
+      "WebFetch(domain:pxz.ai)",
+      "WebFetch(domain:blog.segmind.com)",
+      "WebFetch(domain:www.stablediffusiontutorials.com)",
+      "WebFetch(domain:www.strategyand.pwc.com)",
+      "WebFetch(domain:www.lek.com)",
+      "Bash(python -m py_compile modulos/llm_brain.py)"
     ]
   }
 }
