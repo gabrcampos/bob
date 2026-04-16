@@ -360,10 +360,10 @@ def _carregar_fonte(nome: str | None, tamanho: int, negrito: bool = False) -> Im
 
 _MODELOS_IMAGEM = [
     "imagen-4.0-fast-generate-001",
+    "imagen-3.0-generate-001",
     "gemini-2.5-flash-image",
+    "gemini-2.0-flash-exp-image",
 ]
-
-
 
 def _gerar_fundo(prompt_imagem: str, estilo_imagem: str, cores: list[dict]) -> bytes:
     """Gera imagem de fundo via Gemini/Imagen. Lança exceção se falhar."""

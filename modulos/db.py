@@ -25,7 +25,7 @@ def _client() -> MongoClient:
     uri = os.getenv("MONGODB_URI")
     if not uri:
         raise RuntimeError("MONGODB_URI não definida no .env")
-    return MongoClient(uri, serverSelectionTimeoutMS=8000)
+    return MongoClient(uri, serverSelectionTimeoutMS=20000)
 
 
 def _db():
@@ -97,13 +97,9 @@ def salvar_conteudo(
         "post_linkedin": post_linkedin,
         "narracao_video": narracao_video,
         "blog":          blog,
-        "status": {
-            "slides_gerados":   bool(slides),
-            "imagens_geradas":  False,
-            "drive_enviado":    False,
-            "drive_link":       None,
-        },
-        "aprovado":      False,
+        "status":        "em_producao",  # em_producao, no_drive, ta_no_doc
+        "drive_link":    None,
+        "doc_link":      None,
         "criado_em":     _agora(),
         "atualizado_em": _agora(),
     }
@@ -118,17 +114,6 @@ def atualizar_conteudo(conteudo_id: str, campos: dict):
         {"_id": ObjectId(conteudo_id)},
         {"$set": campos},
     )
-
-
-def marcar_imagens_geradas(conteudo_id: str):
-    atualizar_conteudo(conteudo_id, {"status.imagens_geradas": True})
-
-
-def marcar_drive_enviado(conteudo_id: str, link: str):
-    atualizar_conteudo(conteudo_id, {
-        "status.drive_enviado": True,
-        "status.drive_link":    link,
-    })
 
 
 def excluir_conteudo(conteudo_id: str):
@@ -171,6 +156,63 @@ def contar_conteudos(empresa_id: str) -> dict[str, int]:
     ]
     return {r["_id"]: r["total"] for r in col_conteudos().aggregate(pipeline)}
 
+
+def contar_conteudos_por_status(empresa_id: str) -> dict[str, dict[str, int]]:
+    """
+    Retorna contagem por tipo e depois por status para uma empresa.
+    Ex: {'carrossel': {'em_producao': 10, 'no_drive': 5}}
+    Trata status nulo como 'em_producao' e status legados (dict).
+    """
+    pipeline = [
+        {"$match": {"empresa_id": empresa_id}},
+        {"$project": {
+            "tipo": "$tipo",
+            "status": {
+                "$let": {
+                    "vars": {"s": {"$ifNull": ["$status", "em_producao"]}},
+                    "in": {
+                        "$cond": {
+                            "if": {"$eq": [{"$type": "$$s"}, "object"]},
+                            "then": {"$cond": {"if": {"$eq": ["$$s.drive_enviado", True]}, "then": "no_drive", "else": "em_producao"}},
+                            "else": "$$s"
+                        }
+                    }
+                }
+            }
+        }},
+        {"$group": {"_id": {"tipo": "$tipo", "status": "$status"}, "total": {"$sum": 1}}},
+        {"$group": {"_id": "$_id.tipo", "statuses": {"$push": {"k": "$_id.status", "v": "$total"}}}},
+        {"$project": {"_id": 0, "tipo": "$_id", "contagens": {"$arrayToObject": "$statuses"}}}
+    ]
+    resultados = col_conteudos().aggregate(pipeline)
+    return {r["tipo"]: r["contagens"] for r in resultados if r.get("tipo")}
+
+
+def migrar_status_legado() -> int:
+    """Migra os status antigos (formato dict) para o novo formato string."""
+    docs = col_conteudos().find()
+    count = 0
+    for d in docs:
+        status_atual = d.get("status")
+        if isinstance(status_atual, dict):
+            novo_status = "em_producao"
+            atualizacao = {}
+            
+            if status_atual.get("drive_enviado"):
+                novo_status = "no_drive"
+                
+            if status_atual.get("drive_link") and not d.get("drive_link"):
+                atualizacao["drive_link"] = status_atual.get("drive_link")
+            
+            tipo = d.get("tipo", "")
+            if tipo in ("linkedin", "video", "blog") and d.get("doc_link"):
+                novo_status = "ta_no_doc"
+                
+            atualizacao["status"] = novo_status
+            col_conteudos().update_one({"_id": d["_id"]}, {"$set": atualizacao})
+            count += 1
+            
+    return count
 
 # ─────────────────────────────────────────────
 # AGENDA — escrita

@@ -383,7 +383,23 @@ def _fix_single_quoted_keys(raw: str) -> str:
     return re.sub(r"([{\[,]\s*)'([^']*)'(\s*:)", r'\1"\2"\3', raw)
 
 
-def _parse_json(raw: str) -> dict:
+def _extract_json_array(raw: str) -> str | None:
+    raw = _strip_markdown_fence(raw)
+    start = raw.find("[")
+    if start == -1:
+        return None
+    depth = 0
+    for idx, char in enumerate(raw[start:], start=start):
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return raw[start:idx + 1]
+    return None
+
+
+def _parse_json(raw: str) -> dict | list:
     raw = _strip_markdown_fence(raw)
     try:
         return json.loads(raw)
@@ -391,7 +407,14 @@ def _parse_json(raw: str) -> dict:
         try:
             return json.loads(_sanitize_json_strings(raw))
         except json.JSONDecodeError:
-            return json.loads(_sanitize_json_strings(_fix_single_quoted_keys(raw)))
+            try:
+                return json.loads(_sanitize_json_strings(_fix_single_quoted_keys(raw)))
+            except json.JSONDecodeError:
+                if raw.strip().startswith("[") and raw.strip().endswith("]"):
+                    items = re.findall(r'"((?:[^"\\]|\\.)*)"', raw)
+                    if items:
+                        return [bytes(item, "utf-8").decode("unicode_escape") for item in items]
+                raise
 
 
 PROMPT_BUSCA_DADO_CAPA = """Use o Google Search agora para encontrar UMA notícia, estudo ou relatório publicado nos últimos 12 meses que contenha um dado ou estatística numérica concreta sobre "{tema}".
@@ -531,7 +554,7 @@ Todo conteúdo em português brasileiro.
 
 Escreva um post LinkedIn sobre "{tema}":
 - Mín 4 parágrafos separados por linha em branco, máx 3.000 caracteres
-- Parágrafo 1: fato ou case concreto que para o scroll — dado real ou resultado surpreendente
+- Parágrafo 1: COMEÇE COM UMA PERGUNTA OU GANCHO CONVERSACIONAL que "aqueça" o tema acadêmico, tornando-o mais acessível e menos formal (exemplo: transforme "Eficiência Operacional em GR/RI: Como a IA Libera Equipes para Foco Estratégico" em "Sua equipe de RelGov foi contratada para articular ou para preencher planilhas? Como a automação devolve o tempo estratégico do seu departamento."). Mantenha a sobriedade corporativa, sem exagero.
 - Parágrafo 2: contexto e problema — por que isso acontece, qual é a causa raiz
 - Parágrafo 3: desenvolvimento com 1-2 cases reais com o raciocínio por trás do resultado
 - Parágrafo 4+: perspectiva — abordagens diferentes ou o que separa quem resolve de quem não resolve
@@ -556,13 +579,28 @@ Escreva uma narração de vídeo de 30-45 segundos (~80-100 palavras) sobre "{te
 Responda APENAS com o texto da narração, sem JSON, sem markdown."""
 
 
-PROMPT_SUGESTAO_TEMAS = """Use o Google Search agora para buscar tendências e notícias recentes sobre tecnologia B2B, jurídico e gestão relevantes para {publico_alvo} da empresa {empresa}.
+PROMPT_SUGESTAO_TEMAS = """Use o Google Search agora para buscar tendências, conceitos e estudos recentes relevantes para {publico_alvo} da empresa {empresa}.
 
 {contexto_compilado}
 
 {historico_recente}
 
-Com base nos resultados encontrados, escreva um parágrafo de análise sobre o que está em debate no setor. Depois liste exatamente 10 temas concretos e provocadores para posts de carrossel no LinkedIn — sem genéricos, com ângulo específico e surpreendente.
+Com base nos resultados encontrados, escreva um parágrafo de análise sobre o que está em debate no setor. Depois liste exatamente 10 temas REAIS, ESPECÍFICOS E SÓBRIOS para posts de carrossel no LinkedIn.
+
+CRITÉRIOS OBRIGATÓRIOS PARA CADA TEMA:
+- Título CORPORATIVO e TÉCNICO, nunca metáforas hiperbólicas (evitar: "tsunami", "xeque-mate", "brutal", "engolidos", "apocalipse")
+- Ancorado em um case real, tendência verificável ou pressão regulatória atual
+- Foco em PAIN POINT concreto ou OPORTUNIDADE de ROI mensurável
+- Tom: data-driven, pragmático, de automação/eficiência ou conformidade
+- Relevância: conecta com a dor diária e urgente do público-alvo, NÃO apenas nichos acadêmicos
+- Evitar promessas futuras impossíveis ou contradições (ex: "prever o imprevisível")
+- Evitar temas muito abrangentes ou genéricos (ex: "soberania digital")
+
+ESTRUTURA RECOMENDADA DE TÍTULOS:
+- Como [processo tedioso] se torna [operação eficiente] via IA/automação
+- O impacto de [tendência/lei] em [setor/operação do público]
+- Dados abertos, filtros inteligentes: a transformação que [setor] precisa fazer
+- De [estado antes] para [estado depois]: automação em [processo]
 
 Retorne no formato:
 ANÁLISE: <parágrafo>
@@ -638,23 +676,47 @@ def sugerir_temas(
         _text = _get_response_text(response)
 
     raw = _text.strip()
-    # Extrai o JSON array da resposta: busca especificamente por ["..."]
-    idx = raw.find('["')
-    if idx != -1:
-        end = raw.rfind('"]')
-        if end > idx:
-            raw = raw[idx:end + 2]
+    
+    # Corrige encoding potencial de double UTF-8 (Ã¡ -> á)
+    try:
+        raw = raw.encode('latin-1').decode('utf-8')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    
+    # Remove caracteres de controle inválidos que podem aparecer de Google Search
+    raw = ''.join(ch if ord(ch) >= 32 or ch in '\n\t\r' else '' for ch in raw)
+    
+    raw_array = _extract_json_array(raw)
+    if raw_array is not None:
+        raw = raw_array
     else:
         raw = _strip_markdown_fence(raw)
+
     try:
-        temas = json.loads(raw)
-    except json.JSONDecodeError:
-        temas = json.loads(_sanitize_json_strings(raw))
+        temas = _parse_json(raw)
+    except json.JSONDecodeError as e:
+        # Fallback: extrai todas as strings entre aspas como temas
+        import re
+        items = re.findall(r'"((?:[^"\\]|\\.)*)"', raw)
+        if items:
+            temas = []
+            for item in items:
+                # Corrige encoding de cada item também
+                try:
+                    item = item.encode('latin-1').decode('utf-8')
+                except:
+                    pass
+                temas.append(item)
+        else:
+            # Último recurso: quebra por vírgulas ou line breaks e limpa
+            temas = [linha.strip().strip('"\'[],-').strip() for linha in raw.split('\n') if linha.strip() and len(linha.strip()) > 5]
+            if not temas:
+                raise ValueError(f"Resposta inesperada do modelo ao sugerir temas: {e}") from e
 
     if not isinstance(temas, list):
         raise ValueError("Resposta inesperada do modelo ao sugerir temas.")
 
-    return [str(t).strip() for t in temas if str(t).strip()][:10]
+    return [str(t).strip() for t in temas if str(t).strip() and len(str(t).strip()) > 5][:10]
 
 
 def gerar_legenda(
@@ -690,8 +752,16 @@ def gerar_linkedin(
     empresa_id: str = "tecnosolve",
     publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
     url_site: str = "",
+    slides: list[dict] = None,
 ) -> str:
     bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    
+    # Se temos slides, cria um resumo para contextualizar o post
+    resumo_slides = ""
+    if slides:
+        titulos = [s.get("titulo", "") for s in slides if s.get("titulo")]
+        resumo_slides = f"\nResumo dos slides do carrossel:\n" + "\n".join(f"- {titulo}" for titulo in titulos[:5])  # primeiros 5 slides
+    
     prompt = PROMPT_LINKEDIN_ISOLADO.format(
         empresa=empresa,
         publico_alvo=publico_alvo,
@@ -700,6 +770,11 @@ def gerar_linkedin(
         historico_recente=_bloco_historico(empresa_id),
         padrao_qualidade=PADRAO_QUALIDADE,
     )
+    
+    # Adiciona o resumo dos slides ao prompt se disponível
+    if resumo_slides:
+        prompt = prompt.replace('"{tema}":', f'"{tema}":{resumo_slides}')
+    
     print(f"[LLM] Gerando LinkedIn para: '{tema}' ({empresa})")
     return _gerar_texto_simples(prompt)
 

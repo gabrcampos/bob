@@ -12,3 +12,4 @@ config/oauth_client.json
 config/historico/
 .claude/settings.local.json
 SPEC_*.md
+config/assets/image.png
