@@ -359,6 +359,7 @@ def _carregar_fonte(nome: str | None, tamanho: int, negrito: bool = False) -> Im
 # ─────────────────────────────────────────────
 
 _MODELOS_IMAGEM = [
+    "imagen-4.0-ultra-generate-001",
     "imagen-4.0-fast-generate-001",
     "imagen-3.0-generate-001",
     "gemini-2.5-flash-image",
@@ -1995,7 +1996,7 @@ def compor_slide_misto_dd(
         LOGO_GAP       = 24                        # gap entre imagem e logo
         LOGO_PAD_BOT   = 32                        # margem abaixo da logo
         IMG_PAD_BOTTOM = LOGO_GAP + LOGO_H + LOGO_PAD_BOT
-        IMG_H          = SLIDE_H // 2
+        IMG_H          = int(SLIDE_H * 0.56)
         IMG_W          = SLIDE_W - PAD * 2
         img_x          = PAD
         img_y          = SLIDE_H - IMG_PAD_BOTTOM - IMG_H
@@ -2057,10 +2058,10 @@ def compor_slide_misto_dd(
             return max(int(w), max_w_full // 3)
 
         # Fit de tamanho: quebra com widths variáveis e verifica altura total
-        TITULO_GAP    = -8
-        f_titulo      = _carregar_fonte(nome_fonte, 80, negrito=True)
+        TITULO_GAP    = -2
+        f_titulo      = _carregar_fonte(nome_fonte, 90, negrito=True)
         linhas_titulo = None
-        for tam in [160, 144, 128, 112, 96, 80]:
+        for tam in [260, 240, 220, 200, 184, 168, 152, 136, 120, 104, 90]:
             f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
             # Primeira passagem com width completo para estimar nº de linhas
             lt_est = _quebrar_texto(titulo_up, f_t, max_w_full, draw)
@@ -2083,28 +2084,27 @@ def compor_slide_misto_dd(
             if linha_atual:
                 lt.append(linha_atual)
             h_t = sum(_lh(draw, l, f_t) + TITULO_GAP for l in lt)
-            if h_t <= AREA_TEXTO_H - PAD:
+            if h_t <= AREA_TEXTO_H - 64:
                 f_titulo, linhas_titulo = f_t, lt
                 break
         if linhas_titulo is None:
             linhas_titulo = _quebrar_texto(titulo_up, f_titulo, max_w_full, draw)
 
         titulo_h = sum(_lh(draw, l, f_titulo) + TITULO_GAP for l in linhas_titulo)
-        y        = img_y - titulo_h - PAD // 2
+        # Posiciona deixando um respiro maior na base (40% do espaço livre no topo, 60% na base)
+        espaco_livre = img_y - PAD - titulo_h
+        y = PAD + max(0, int(espaco_livre * 0.4))
 
-        # Renderiza cada linha; calcula Y do centro da última para posicionar a seta
-        y_ultima = y
+        # Renderiza cada linha
         for i, linha in enumerate(linhas_titulo):
             lh = _lh(draw, linha, f_titulo)
-            if i == len(linhas_titulo) - 1:
-                y_ultima = y + lh // 2
             draw.text((PAD, y), linha, font=f_titulo, fill=BRANCO)
             y += lh + TITULO_GAP
 
-        # Seta alinhada verticalmente ao centro da última linha do título
+        # Seta posicionada verticalmente no centro do gap entre o título e a imagem
         if _arrow_img is not None:
-            _ax        = SLIDE_W - PAD - _arr_w
-            _ay        = y_ultima - _arr_h // 2
+            _ax        = SLIDE_W - 16 - _arr_w
+            _ay        = ((y - TITULO_GAP) + img_y) // 2 - _arr_h // 2
             _base_seta = canvas.convert("RGBA")
             _base_seta.paste(_arrow_img, (_ax, _ay), _arrow_img)
             canvas     = _base_seta.convert("RGB")
@@ -2230,7 +2230,7 @@ def compor_slide_misto_dd(
             draw   = ImageDraw.Draw(canvas)
 
         # ── Imagem IA arredondada no rodapé (sobre a logo 2) ─────────────
-        IMG_H          = SLIDE_H // 2        # 675 px
+        IMG_H          = int(SLIDE_H * 0.56)
         IMG_W          = int(SLIDE_W * 0.87) # ~939 px
         img_x          = (SLIDE_W - IMG_W) // 2
         IMG_PAD_BOTTOM = 60
@@ -2255,8 +2255,8 @@ def compor_slide_misto_dd(
         max_w_txt     = SLIDE_W - PAD * 2
         texto_limpo   = _strip_bullets(texto)
 
-        f_corpo = _carregar_fonte(nome_fonte, 38)
-        for tam in [58, 52, 46, 42, 38, 34]:
+        f_corpo = _carregar_fonte(nome_fonte, 44)
+        for tam in [72, 66, 60, 54, 48, 42, 38]:
             f_t  = _carregar_fonte(nome_fonte, tam)
             lins = _quebrar_texto(texto_limpo, f_t, max_w_txt, draw)
             h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lins)
@@ -2721,7 +2721,12 @@ def compor_slide_misto_dd(
 
 def _gerar_fundo_misto_dd(slide: dict, identidade_visual: dict) -> bytes | None:
     """Gera imagem IA para um slide do Carrossel Misto DD. Retorna None se falhar."""
-    prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
+    n = int(slide.get("slide", 0))
+    if n == 8:
+        prompt_imagem = "close shot from above of a professional plate of a great restaurant "
+    else:
+        prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
+        
     if not prompt_imagem:
         return None
     estilo = identidade_visual.get("estilo_imagem", "")

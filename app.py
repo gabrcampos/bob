@@ -329,14 +329,14 @@ def _render_status_manager(doc: dict, tipo_key: str, emp: dict):
     with col2:
         # Botão para reverter para "Em Produção"
         if current_status != "em_producao":
-            if st.button("↩ Mover para 'Em Produção'", key=f"status_prod_{cid}", use_container_width=True):
+            if st.button("↩ Mover para 'Em Produção'", key=f"status_prod_{cid}", width='stretch'):
                 db.atualizar_conteudo(cid, {"status": "em_producao"})
                 st.rerun()
 
         # Botão para mover texto para "Tá no Doc"
         elif not is_carousel and current_status == "em_producao":
             folder_id = emp.get("drive_folder_id") or ""
-            if st.button("Mover para 'Tá no Doc'", key=f"status_doc_{cid}", disabled=not folder_id, use_container_width=True):
+            if st.button("Mover para 'Tá no Doc'", key=f"status_doc_{cid}", disabled=not folder_id, width='stretch'):
                 with st.spinner("Criando Google Doc..."):
                     try:
                         docs.criar_doc_individual(doc, folder_id) # Esta função agora atualiza o BD
@@ -365,7 +365,7 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
     with st.container(border=True):
         _col_doc, _col_del, _col_clear = st.columns([2, 1, 1])
         with _col_doc:
-            if st.button("📝 Extrair textos para Doc", key=f"btn_doc_c_{emp['id']}", use_container_width=True, disabled=not st.session_state.get(_key_sel_c)):
+            if st.button("📝 Extrair textos para Doc", key=f"btn_doc_c_{emp['id']}", width='stretch', disabled=not st.session_state.get(_key_sel_c)):
                 with st.spinner("Criando documento..."):
                     try:
                         selected_ids = st.session_state.get(_key_sel_c, [])
@@ -394,7 +394,7 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
                         st.error(f"Erro: {e}")
         
         with _col_del:
-            if st.button("🗑️ Excluir selecionados", key=f"btn_del_c_{emp['id']}", disabled=not st.session_state[_key_sel_c], use_container_width=True):
+            if st.button("🗑️ Excluir selecionados", key=f"btn_del_c_{emp['id']}", disabled=not st.session_state[_key_sel_c], width='stretch'):
                 for cid_del in st.session_state[_key_sel_c]:
                     excluir_conteudo(cid_del)
                 st.success(f"{len(st.session_state[_key_sel_c])} carrossel(is) excluído(s).")
@@ -402,7 +402,7 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
                 st.rerun()
         
         with _col_clear:
-            if st.button("Limpar seleção", key=f"btn_clear_c_{emp['id']}", use_container_width=True):
+            if st.button("Limpar seleção", key=f"btn_clear_c_{emp['id']}", width='stretch'):
                 st.session_state[_key_sel_c] = []
                 st.rerun()
 
@@ -422,7 +422,22 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
             with col2:
                 imagens = gerador_imagens.listar_imagens(emp["id"], stem)
                 if imagens:
-                    st.image(str(imagens[0]), use_column_width='always', caption="Capa")
+                    st.image(str(imagens[0]), width='stretch', caption="Capa")
+
+            _leg = doc.get("legenda", "")
+            _col_leg, _col_gerar_leg = st.columns([4, 1])
+            with _col_leg:
+                _nova_leg = st.text_area("Legenda", value=_leg, key=f"leg_c_{cid}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
+            with _col_gerar_leg:
+                if st.button("✨ Gerar legenda", key=f"gerar_leg_c_{cid}", width='stretch'):
+                    with st.spinner("Gerando..."):
+                        try:
+                            _nova_leg = llm_brain.gerar_legenda(doc["tema"], doc.get("empresa_nome", emp["nome"]), emp["id"], doc.get("publico_alvo", emp["publico_alvo"]), doc.get("slides", []))
+                            db.atualizar_conteudo(cid, {"legenda": _nova_leg}); st.rerun()
+                        except Exception as e: st.error(f"Erro: {e}")
+                if _nova_leg != _leg:
+                    if st.button("💾 Salvar legenda", key=f"sv_leg_c_{cid}", width='stretch'):
+                        db.atualizar_conteudo(cid, {"legenda": _nova_leg}); st.success("Legenda salva.")
 
             with st.expander("Editar / Gerar Imagens", key=f"exp_c_{cid}"):
                 _sel_c = st.session_state.get(_key_sel_c, [])
@@ -441,7 +456,7 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
                 if col_del.button("Excluir", key=f"del_c_{emp['id']}_{cid}", type="secondary"):
                     excluir_conteudo(cid); st.success("Excluído."); st.rerun()
 
-                if col_regen.button("↺ Regenerar texto", key=f"regen_c_{cid}", use_container_width=True):
+                if col_regen.button("↺ Regenerar texto", key=f"regen_c_{cid}", width='stretch'):
                     with st.spinner("Regenerando carrossel..."):
                         try:
                             novos = llm_brain.gerar_slides_carrossel(
@@ -472,41 +487,27 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
                     _logo_sel = st.radio("Logo", _logos_opts, horizontal=True, key=f"logo_c_{cid}", label_visibility="collapsed")
                     _logo_idx = 2 if _logo_sel == _logos_opts[1] else 1
 
-                _leg = doc.get("legenda", "")
-                _col_leg, _col_gerar_leg = st.columns([4, 1])
-                with _col_leg:
-                    _nova_leg = st.text_area("Legenda", value=_leg, key=f"leg_c_{cid}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
-                with _col_gerar_leg:
-                    if st.button("✨ Gerar legenda", key=f"gerar_leg_c_{cid}", use_container_width=True):
-                        with st.spinner("Gerando..."):
-                            try:
-                                _nova_leg = llm_brain.gerar_legenda(doc["tema"], doc.get("empresa_nome", emp["nome"]), emp["id"], doc.get("publico_alvo", emp["publico_alvo"]), doc.get("slides", []))
-                                db.atualizar_conteudo(cid, {"legenda": _nova_leg}); st.rerun()
-                            except Exception as e: st.error(f"Erro: {e}")
-                    if _nova_leg != _leg:
-                        if st.button("💾 Salvar legenda", key=f"sv_leg_c_{cid}", use_container_width=True):
-                            db.atualizar_conteudo(cid, {"legenda": _nova_leg}); st.success("Legenda salva.")
-
+                regenerar_tudo = False
                 if imagens:
                     col_cap, col_baixar, col_drive, col_regen = st.columns([2, 1, 1, 1])
                     zip_buf = io.BytesIO()
                     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
                         for idx, ip in enumerate(imagens): zf.write(ip, arcname=f"{idx+1}.png")
                     zip_buf.seek(0)
-                    col_baixar.download_button("↓ Baixar tudo", data=zip_buf, file_name=f"{stem}.zip", mime="application/zip", key=f"dl_zip_c_{cid}", use_container_width=True)
+                    col_baixar.download_button("↓ Baixar tudo", data=zip_buf, file_name=f"{stem}.zip", mime="application/zip", key=f"dl_zip_c_{cid}", width='stretch')
                     cols = st.columns(3)
                     for idx, img_path in enumerate(imagens):
                         slide_n = int(img_path.stem.split("_")[-1])
                         with cols[idx % 3]:
-                            st.image(str(img_path), use_column_width='always')
+                            st.image(str(img_path), width='stretch')
                             col_dl, col_rs = st.columns(2)
                             with open(img_path, "rb") as img_f:
-                                col_dl.download_button("↓ Baixar", data=img_f.read(), file_name=img_path.name, mime="image/png", key=f"dl_c_{cid}_{idx}", use_container_width=True)
+                                col_dl.download_button("↓ Baixar", data=img_f.read(), file_name=img_path.name, mime="image/png", key=f"dl_c_{cid}_{idx}", width='stretch')
                             _variante_sel = None
                             if slide_n in _OPCOES_ESTILO_SLIDE:
                                 _nomes = [o[0] for o in _OPCOES_ESTILO_SLIDE[slide_n]]; _vals  = {o[0]: o[1] for o in _OPCOES_ESTILO_SLIDE[slide_n]}
                                 _variante_sel = _vals[st.selectbox("Estilo", _nomes, key=f"est_c_{cid}_{slide_n}", label_visibility="collapsed")]
-                            if col_rs.button("↺ Slide", key=f"rs_c_{cid}_{idx}", use_container_width=True):
+                            if col_rs.button("↺ Slide", key=f"rs_c_{cid}_{idx}", width='stretch'):
                                 slide_data = next((s for s in doc.get("slides", []) if s.get("slide") == slide_n), None)
                                 if slide_data:
                                     with st.spinner(f"Regenerando slide {slide_n}..."):
@@ -514,7 +515,6 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
                                             gerador_imagens.gerar_imagem_slide(slide=slide_data, empresa_id=emp["id"], stem=stem, identidade_visual=iv, is_ultimo=(slide_n == len(doc.get("slides", []))), variante_override=_variante_sel, logo_index=_logo_idx)
                                             st.rerun()
                                         except Exception as e: st.error(f"Erro: {e}")
-                else: regenerar_tudo = False
                 
                 # Ações de imagem (Gerar / Drive / Baixar / Regenerar)
                 col_gen, col_drive, col_baixar, col_regen_geral = st.columns(4)
@@ -522,7 +522,7 @@ def _render_carrossel_list(docs_c: list[dict], emp: dict):
                 # Botão do Drive (sempre visível, condicionalmente desabilitado)
                 if doc.get("status", "em_producao") == "em_producao":
                     folder_id = emp.get("drive_folder_id", "") or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
-                    if col_drive.button("Mover para 'No Drive'", key=f"drive_c_{cid}", use_container_width=True, disabled=(not folder_id or not imagens), help="Gere as imagens antes de enviar para o Drive." if not imagens else None):
+                    if col_drive.button("Mover para 'No Drive'", key=f"drive_c_{cid}", width='stretch', disabled=(not folder_id or not imagens), help="Gere as imagens antes de enviar para o Drive." if not imagens else None):
                         with st.spinner("Enviando para o Drive..."):
                             try:
                                 _, nome_pasta, folder_link = drive.enviar_carrossel_drive(imagens, folder_id)
@@ -574,7 +574,22 @@ def _render_tweet_list(docs_tw: list[dict], emp: dict):
             with col2:
                 imagens_tw = gerador_imagens.listar_imagens_tweet(emp["id"], stem_tw)
                 if imagens_tw:
-                    st.image(str(imagens_tw[0]), use_column_width='always', caption="Capa")
+                    st.image(str(imagens_tw[0]), width='stretch', caption="Capa")
+
+            _leg_tw = doc_tw.get("legenda", "")
+            _col_leg_tw, _col_gerar_leg_tw = st.columns([4, 1])
+            with _col_leg_tw:
+                _nova_leg_tw = st.text_area("Legenda", value=_leg_tw, key=f"leg_tw_{cid_tw}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
+            with _col_gerar_leg_tw:
+                if st.button("✨ Gerar legenda", key=f"gerar_leg_tw_{cid_tw}", width='stretch'):
+                    with st.spinner("Gerando..."):
+                        try:
+                            _nova_leg_tw = llm_brain.gerar_legenda(doc_tw["tema"], doc_tw.get("empresa_nome", emp["nome"]), emp["id"], doc_tw.get("publico_alvo", emp["publico_alvo"]), doc_tw.get("slides", []))
+                            db.atualizar_conteudo(cid_tw, {"legenda": _nova_leg_tw}); st.rerun()
+                        except Exception as e: st.error(f"Erro: {e}")
+                if _nova_leg_tw != _leg_tw:
+                    if st.button("💾 Salvar legenda", key=f"sv_leg_tw_{cid_tw}", width='stretch'):
+                        db.atualizar_conteudo(cid_tw, {"legenda": _nova_leg_tw}); st.success("Legenda salva.")
 
             with st.expander("Editar / Gerar Imagens"):
                 if doc_tw.get("atualizado_em"):
@@ -583,7 +598,7 @@ def _render_tweet_list(docs_tw: list[dict], emp: dict):
                 col_del_tw, col_regen_tw, _esp_tw = st.columns([1, 2, 3])
                 if col_del_tw.button("Excluir", key=f"del_tw_{emp['id']}_{cid_tw}", type="secondary"):
                     excluir_conteudo(cid_tw); st.success("Excluído."); st.rerun()
-                if col_regen_tw.button("↺ Regenerar texto", key=f"regen_tw_{cid_tw}", use_container_width=True):
+                if col_regen_tw.button("↺ Regenerar texto", key=f"regen_tw_{cid_tw}", width='stretch'):
                     with st.spinner("Regenerando..."):
                         try:
                             novos_tw = llm_brain.gerar_carrossel_tweet(tema=doc_tw["tema"], empresa=emp["nome"], empresa_id=emp["id"], publico_alvo=emp["publico_alvo"], url_site=emp.get("url_site", ""))
@@ -616,14 +631,31 @@ def _render_tweet_list(docs_tw: list[dict], emp: dict):
                 with _tw_col2:
                     _cor_circ_tw = st.color_picker("Cor do círculo", value=_cor_prim_emp, key=f"cor_tw_{cid_tw}")
 
+                regen_tw_tudo = False
                 if imagens_tw:
                     col_cap_tw, col_baixar_tw, col_drive_tw, col_regen_img_tw = st.columns([2, 1, 1, 1])
                     zip_buf_tw = io.BytesIO();
                     with zipfile.ZipFile(zip_buf_tw, "w", zipfile.ZIP_DEFLATED) as zf:
                         for idx, ip in enumerate(imagens_tw): zf.write(ip, arcname=f"{idx+1}.png")
                     zip_buf_tw.seek(0)
-                    col_baixar_tw.download_button("↓ Baixar tudo", data=zip_buf_tw, file_name=f"{stem_tw}_tweet.zip", mime="application/zip", key=f"dl_zip_tw_{cid_tw}", use_container_width=True)
-                else: regen_tw_tudo = False
+                    col_baixar_tw.download_button("↓ Baixar tudo", data=zip_buf_tw, file_name=f"{stem_tw}_tweet.zip", mime="application/zip", key=f"dl_zip_tw_{cid_tw}", width='stretch')
+                    
+                    cols_tw = st.columns(3)
+                    for idx, img_path in enumerate(imagens_tw):
+                        slide_n = int(img_path.stem.split("_")[-1])
+                        with cols_tw[idx % 3]:
+                            st.image(str(img_path), width='stretch')
+                            col_dl_tw, col_rs_tw = st.columns(2)
+                            with open(img_path, "rb") as img_f:
+                                col_dl_tw.download_button("↓ Baixar", data=img_f.read(), file_name=img_path.name, mime="image/png", key=f"dl_tw_{cid_tw}_{idx}", width='stretch')
+                            if col_rs_tw.button("↺ Slide", key=f"rs_tw_{cid_tw}_{idx}", width='stretch'):
+                                slide_data = next((s for s in doc_tw.get("slides", []) if int(s.get("slide", 0)) == slide_n), None)
+                                if slide_data:
+                                    with st.spinner(f"Regenerando slide {slide_n}..."):
+                                        try:
+                                            gerador_imagens.gerar_imagem_slide_tweet(slide=slide_data, empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_tw, identidade_visual=iv_tw, logo_index=_logo_idx_tw, cor_circulo_hex=_cor_circ_tw)
+                                            st.rerun()
+                                        except Exception as e: st.error(f"Erro: {e}")
 
                 # Botão do Drive (sempre visível, condicionalmente desabilitado)
                 if doc_tw.get("status", "em_producao") == "em_producao":
@@ -658,9 +690,9 @@ def _render_tweet_list(docs_tw: list[dict], emp: dict):
                     if slide.get("prompt_imagem") is not None:
                         slides_tw_ed[i]["prompt_imagem"] = st.text_area("Prompt", value=slide["prompt_imagem"], key=f"prm_{_sk}", label_visibility="collapsed", placeholder="Prompt de imagem", height=68)
                     _cs_tw, _csr_tw = st.columns(2)
-                    if _cs_tw.button("💾 Salvar", key=f"sv_{_sk}", use_container_width=True):
+                    if _cs_tw.button("💾 Salvar", key=f"sv_{_sk}", width='stretch'):
                         db.atualizar_conteudo(cid_tw, {"slides": slides_tw_ed}); st.success(f"Slide {slide['slide']} salvo."); st.rerun()
-                    if _csr_tw.button("💾 Salvar e Regenerar", key=f"svr_{_sk}", use_container_width=True):
+                    if _csr_tw.button("💾 Salvar e Regenerar", key=f"svr_{_sk}", width='stretch'):
                         db.atualizar_conteudo(cid_tw, {"slides": slides_tw_ed})
                         with st.spinner(f"Regenerando slide {slide['slide']}..."):
                             try:
@@ -688,7 +720,22 @@ def _render_misto_dd_list(docs_mdd: list[dict], emp: dict):
             with col2:
                 imagens_mdd = gerador_imagens.listar_imagens_misto_dd(emp["id"], stem_mdd)
                 if imagens_mdd:
-                    st.image(str(imagens_mdd[0]), use_column_width='always', caption="Capa")
+                    st.image(str(imagens_mdd[0]), width='stretch', caption="Capa")
+
+            _leg_mdd = doc_mdd.get("legenda", "")
+            _col_leg_mdd, _col_gerar_leg_mdd = st.columns([4, 1])
+            with _col_leg_mdd:
+                _nova_leg_mdd = st.text_area("Legenda", value=_leg_mdd, key=f"leg_mdd_{cid_mdd}", height=100, label_visibility="collapsed", placeholder="Legenda para o post...")
+            with _col_gerar_leg_mdd:
+                if st.button("✨ Gerar legenda", key=f"gerar_leg_mdd_{cid_mdd}", width='stretch'):
+                    with st.spinner("Gerando..."):
+                        try:
+                            _nova_leg_mdd = llm_brain.gerar_legenda(doc_mdd["tema"], doc_mdd.get("empresa_nome", emp["nome"]), emp["id"], doc_mdd.get("publico_alvo", emp["publico_alvo"]), doc_mdd.get("slides", []))
+                            db.atualizar_conteudo(cid_mdd, {"legenda": _nova_leg_mdd}); st.rerun()
+                        except Exception as e: st.error(f"Erro: {e}")
+                if _nova_leg_mdd != _leg_mdd:
+                    if st.button("💾 Salvar legenda", key=f"sv_leg_mdd_{cid_mdd}", width='stretch'):
+                        db.atualizar_conteudo(cid_mdd, {"legenda": _nova_leg_mdd}); st.success("Legenda salva.")
 
             with st.expander("Editar / Gerar Imagens"):
                 if doc_mdd.get("atualizado_em"):
@@ -697,7 +744,7 @@ def _render_misto_dd_list(docs_mdd: list[dict], emp: dict):
                 col_del_mdd, col_regen_mdd, _esp_mdd = st.columns([1, 2, 3])
                 if col_del_mdd.button("Excluir", key=f"del_mdd_{emp['id']}_{cid_mdd}", type="secondary"):
                     excluir_conteudo(cid_mdd); st.success("Excluído."); st.rerun()
-                if col_regen_mdd.button("↺ Regenerar texto", key=f"regen_mdd_{cid_mdd}", use_container_width=True):
+                if col_regen_mdd.button("↺ Regenerar texto", key=f"regen_mdd_{cid_mdd}", width='stretch'):
                     with st.spinner("Regenerando..."):
                         try:
                             novos_mdd = llm_brain.gerar_carrossel_misto_dd(tema=doc_mdd["tema"], empresa=emp["nome"], empresa_id=emp["id"], publico_alvo=emp["publico_alvo"], url_site=emp.get("url_site", ""))
@@ -724,14 +771,32 @@ def _render_misto_dd_list(docs_mdd: list[dict], emp: dict):
                     _logo_sel_mdd = st.radio("Logo", _logos_opts_mdd, horizontal=True, key=f"logo_mdd_{cid_mdd}", label_visibility="collapsed")
                     _logo_idx_mdd = 2 if _logo_sel_mdd == _logos_opts_mdd[1] else 1
 
+                regen_mdd_tudo = False
                 if imagens_mdd:
                     col_cap_mdd, col_baixar_mdd, col_drive_mdd, col_regen_mdd_img = st.columns([2, 1, 1, 1])
                     zip_buf_mdd = io.BytesIO()
                     with zipfile.ZipFile(zip_buf_mdd, "w", zipfile.ZIP_DEFLATED) as zf:
                         for idx, ip in enumerate(imagens_mdd): zf.write(ip, arcname=f"{idx+1}.png")
                     zip_buf_mdd.seek(0)
-                    col_baixar_mdd.download_button("↓ Baixar tudo", data=zip_buf_mdd, file_name=f"{stem_mdd}_misto_dd.zip", mime="application/zip", key=f"dl_zip_mdd_{cid_mdd}", use_container_width=True)
-                else: regen_mdd_tudo = False
+                    col_baixar_mdd.download_button("↓ Baixar tudo", data=zip_buf_mdd, file_name=f"{stem_mdd}_misto_dd.zip", mime="application/zip", key=f"dl_zip_mdd_{cid_mdd}", width='stretch')
+                    
+                    cols_mdd = st.columns(3)
+                    for idx, img_path in enumerate(imagens_mdd):
+                        slide_n = int(img_path.stem.split("_")[-1])
+                        with cols_mdd[idx % 3]:
+                            st.image(str(img_path), width='stretch')
+                            fundo_ok = st.checkbox("Fundo OK", value=True, key=f"fundo_ok_mdd_{cid_mdd}_{idx}")
+                            col_dl_mdd, col_rs_mdd = st.columns(2)
+                            with open(img_path, "rb") as img_f:
+                                col_dl_mdd.download_button("↓ Baixar", data=img_f.read(), file_name=img_path.name, mime="image/png", key=f"dl_mdd_{cid_mdd}_{idx}", width='stretch')
+                            if col_rs_mdd.button("↺ Slide", key=f"rs_mdd_{cid_mdd}_{idx}", width='stretch'):
+                                slide_data = next((s for s in doc_mdd.get("slides", []) if int(s.get("slide", 0)) == slide_n), None)
+                                if slide_data:
+                                    with st.spinner(f"Regenerando slide {slide_n}..."):
+                                        try:
+                                            gerador_imagens.gerar_imagem_slide_misto_dd(slide=slide_data, empresa_id=emp["id"], empresa_nome=emp["nome"], stem=stem_mdd, identidade_visual=iv_mdd, logo_index=_logo_idx_mdd, fundo_fixo=fundo_ok)
+                                            st.rerun()
+                                        except Exception as e: st.error(f"Erro: {e}")
 
                 # Botão do Drive (sempre visível, condicionalmente desabilitado)
                 if doc_mdd.get("status", "em_producao") == "em_producao":
@@ -765,7 +830,7 @@ def _render_misto_dd_list(docs_mdd: list[dict], emp: dict):
                     slides_mdd_ed[i]["texto"]  = st.text_area("Texto",  value=slide["texto"],  key=f"txt_{_sk}", label_visibility="collapsed", placeholder="Texto", height=100)
                     if slide.get("prompt_imagem") is not None:
                         slides_mdd_ed[i]["prompt_imagem"] = st.text_area("Prompt", value=slide.get("prompt_imagem", ""), key=f"prm_{_sk}", label_visibility="collapsed", placeholder="Prompt de imagem", height=68)
-                    if st.button("💾 Salvar", key=f"sv_{_sk}", use_container_width=True):
+                    if st.button("💾 Salvar", key=f"sv_{_sk}", width='stretch'):
                         db.atualizar_conteudo(cid_mdd, {"slides": slides_mdd_ed}); st.success(f"Slide {slide['slide']} salvo."); st.rerun()
 
 def _render_md_list(docs: list[dict], tipo: str, campo: str, altura: int, prefixo: str, emp: dict, fn_regenerar=None):
@@ -782,20 +847,28 @@ def _render_md_list(docs: list[dict], tipo: str, campo: str, altura: int, prefix
             _render_status_badge(doc)
 
             with st.expander("Ver / Editar Texto"):
-                corpo = doc.get(campo, "")
                 if doc.get("atualizado_em"):
                     st.caption(f"Última atualização: {doc['atualizado_em'].strftime('%d/%m/%y %H:%M')}")
                 _render_status_manager(doc, tipo, emp)
-                btn_cols = st.columns([1, 1, 5]) if fn_regenerar else st.columns([1, 6])
-                if btn_cols[0].button("Excluir", key=f"del_{tipo}_{emp['id']}_{cid}", type="secondary"):
+                
+                col_del, col_regen = st.columns(2)
+                if col_del.button("🗑️ Excluir Conteúdo", key=f"del_{tipo}_{emp['id']}_{cid}", type="secondary", width='stretch'):
                     excluir_conteudo(cid); st.success("Excluído."); st.rerun()
-                if fn_regenerar and btn_cols[1].button("↺ Regenerar", key=f"regen_{tipo}_{cid}"):
+                if fn_regenerar and col_regen.button("↺ Regenerar Texto", key=f"regen_{tipo}_{cid}", width='stretch'):
                     with st.spinner("Regenerando..."):
                         try:
                             novo = fn_regenerar(doc["tema"])
                             db.atualizar_conteudo(cid, {campo: novo}); st.rerun()
                         except Exception as e: st.error(f"Erro: {e}")
-                st.text_area(" ", corpo, height=altura, key=f"{prefixo}_{cid}", label_visibility="collapsed")
+                
+                with st.form(key=f"form_md_{cid}"):
+                    corpo = doc.get(campo, "")
+                    novo_corpo = st.text_area("Texto do Conteúdo", corpo, height=altura, label_visibility="collapsed")
+                    if st.form_submit_button("💾 Salvar Edição", type="primary", width='stretch'):
+                        if novo_corpo != corpo:
+                            db.atualizar_conteudo(cid, {campo: novo_corpo}); st.success("Salvo."); st.rerun()
+                        else:
+                            st.info("Nenhuma alteração detectada.")
 
 def filter_docs_by_status(docs: list[dict], status_filter: str | None) -> tuple[str, list[dict]]:
     """Filtra documentos pelo novo campo de status, lidando com legados."""
@@ -837,7 +910,7 @@ empresas = carregar_empresas()
 # --- Sidebar Navigation ---
 with st.sidebar:
     st.title("Bob")
-    if st.button("📝 Gerar Conteúdo", use_container_width=True, type="primary"):
+    if st.button("📝 Gerar Conteúdo", width='stretch', type="primary"):
         st.session_state.view = "gerar"
         st.session_state.selected_company = None
         st.rerun()
@@ -878,7 +951,7 @@ with st.sidebar:
                     for status in statuses:
                         count = counts.get(tipo_key, {}).get(status, 0)
                         label = f"{status_labels[status]} ({count})"
-                        if st.button(label, key=f"btn_{emp_sel['id']}_{tipo_key}_{status}", use_container_width=True):
+                        if st.button(label, key=f"btn_{emp_sel['id']}_{tipo_key}_{status}", width='stretch'):
                             st.session_state.view = "conteudos"
                             st.session_state.selected_company = emp_sel['id']
                             st.session_state.selected_type = tipo_key
@@ -886,11 +959,11 @@ with st.sidebar:
                             st.rerun()
     
     st.divider()
-    if st.button("🏢 Configurar Empresas", use_container_width=True):
+    if st.button("🏢 Configurar Empresas", width='stretch'):
         st.session_state.view = "empresas"
         st.rerun()
         
-    if st.button("🛠️ Corrigir Banco (Migrar)", use_container_width=True, help="Migra os status antigos para a nova estrutura."):
+    if st.button("🛠️ Corrigir Banco (Migrar)", width='stretch', help="Migra os status antigos para a nova estrutura."):
         with st.spinner("Atualizando banco..."):
             n_migrados = db.migrar_status_legado()
         st.success(f"{n_migrados} conteúdos atualizados!")
