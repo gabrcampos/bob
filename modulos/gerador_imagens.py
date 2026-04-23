@@ -492,6 +492,18 @@ def _gradiente_preto(largura: int, altura: int, alpha_topo: int = 60, alpha_base
     return camada
 
 
+def _gradiente_escuro_radial(largura: int, altura: int, cx: int, cy: int, r_max: int, alpha_center: int = 180) -> Image.Image:
+    """Cria um gradiente radial escuro."""
+    layer = Image.new("RGBA", (largura, altura), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    steps = 30
+    for i in range(steps):
+        raio = int(r_max * (1 - i/steps))
+        alpha = int(alpha_center * (1 - (1 - i/steps)**2))
+        if raio > 0:
+            draw.ellipse([cx - raio, cy - raio, cx + raio, cy + raio], fill=(0, 0, 0, alpha))
+    return layer
+
 def _crop_cover(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
     """Escala e recorta centralmente para cobrir as dimensões alvo sem barras."""
     src_w, src_h = img.size
@@ -536,12 +548,12 @@ def _strip_letterbox(img: Image.Image, threshold: int = 18) -> Image.Image:
 
 
 def _lh(draw: ImageDraw.ImageDraw, texto: str, font) -> int:
-    """Altura de linha consistente: tamanho nominal da fonte × 1.1 (mínima, sem variação por glifo)."""
+    """Altura de linha consistente: tamanho nominal da fonte × 0.95 (reduzida em 15%)."""
     try:
-        return int(font.size * 1.1)
+        return int(font.size * 0.95)
     except AttributeError:
         bb = draw.textbbox((0, 0), texto, font=font)
-        return bb[3] - bb[1]
+        return int((bb[3] - bb[1]) * 0.85)
 
 
 _CAPA_BLK_PAD_V = 14   # padding vertical em cada bloco do título da capa
@@ -1433,7 +1445,7 @@ def gerar_imagens_carrossel(
         else:
             fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
         imagem = compor_slide(
-            slide["titulo"], slide["texto"], fundo_slide, fonte,
+            slide.get("titulo", ""), slide.get("texto", ""), fundo_slide, fonte,
             logo_path=logo_p, url_site=url_site,
             cor_primaria=cor_prim, cor_secundaria=cor_sec,
             is_ultimo=(i == total - 1),
@@ -1480,7 +1492,7 @@ def gerar_imagem_slide(slide: dict, empresa_id: str, stem: str,
     else:
         fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
     imagem = compor_slide(
-        slide["titulo"], slide["texto"], fundo_slide, fonte,
+        slide.get("titulo", ""), slide.get("texto", ""), fundo_slide, fonte,
         logo_path=logo_p, url_site=url_site,
         cor_primaria=cor_prim, cor_secundaria=cor_sec,
         is_ultimo=is_ultimo,
@@ -1495,6 +1507,467 @@ def listar_imagens(empresa_id: str, stem: str) -> list[Path]:
     pasta = OUTPUTS_DIR / empresa_id / "imagens" / stem
     if not pasta.exists():
         return []
+    return sorted(pasta.glob("slide_*.png"), key=lambda p: int(p.stem.split("_")[-1]))
+
+
+# ─────────────────────────────────────────────
+# Carrossel OldSchool
+# ─────────────────────────────────────────────
+
+def _desenhar_overlay_giz(canvas: Image.Image) -> Image.Image:
+    import random
+    import math
+    layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    
+    # Centros de concentração para deixar a distribuição menos uniforme
+    clusters = [(random.randint(0, SLIDE_W), random.randint(0, SLIDE_H)) for _ in range(12)]
+    
+    # --- Arranhões verticais ---
+    for _ in range(13):
+        if random.random() < 0.75:
+            cx, cy = random.choice(clusters)
+            x1 = cx + int(random.gauss(0, 300))
+            y1 = cy + int(random.gauss(0, 300))
+        else:
+            x1 = random.randint(-50, SLIDE_W + 50)
+            y1 = random.randint(-50, SLIDE_H + 50)
+        
+        length = random.randint(50, 300)
+        angle = math.pi / 2 + random.gauss(0, 0.05)
+        base_alpha = random.randint(20, 45)
+        gray_val = random.randint(200, 255)
+        
+        px, py = x1, y1
+        step_len = 4
+        segments = int(length // step_len)
+        for _ in range(segments):
+            nx = px + math.cos(angle) * step_len
+            ny = py + math.sin(angle) * step_len
+            if random.random() < 0.75:  # Cria falhas invisíveis (25% de chance de pular)
+                alpha = max(0, base_alpha - random.randint(0, 10))
+                draw.line([(px, py), (nx, ny)], fill=(gray_val, gray_val, gray_val, alpha), width=1)
+            px, py = nx, ny
+
+    # --- Micro-scratches (mais curvos e horizontais) ---
+    for _ in range(435):
+        # Posição sempre clusterizada
+        cx, cy = random.choice(clusters)
+        x1 = cx + int(random.gauss(0, 300))
+        y1 = cy + int(random.gauss(0, 300))
+        
+        length = random.randint(5, 120)  # Maior variação de comprimento
+        base_angle = 0 if random.random() < 0.5 else math.pi
+        angle = base_angle + random.gauss(0, 0.2)
+        base_alpha = random.randint(30, 60)
+        width = random.randint(1, 2)
+        gray_val = random.randint(200, 255)
+        
+        # Variação de curvatura
+        bend_type = random.random()
+        if bend_type < 0.3:
+            total_bend = random.uniform(-0.1, 0.1)  # Quase retos
+        elif bend_type < 0.7:
+            total_bend = random.uniform(-0.8, 0.8)  # Curvas médias
+        else:
+            total_bend = random.uniform(-2.5, 2.5)  # Parábolas/curvas muito acentuadas
+            
+        steps = max(3, int(length // 3))
+        angle_step = total_bend / steps
+        step_len = length / steps
+        
+        px, py = x1, y1
+        for _step in range(steps):
+            nx = px + math.cos(angle) * step_len
+            ny = py + math.sin(angle) * step_len
+            if random.random() < 0.80:  # Cria quebras no meio do micro-scratch
+                alpha = max(0, base_alpha - random.randint(0, 15))
+                draw.line([(px, py), (nx, ny)], fill=(gray_val, gray_val, gray_val, alpha), width=width)
+            px, py = nx, ny
+            angle += angle_step
+
+    base = canvas.convert("RGBA")
+    base.alpha_composite(layer)
+    return base.convert("RGB")
+
+def compor_slide_oldschool(
+    texto: str,
+    nome_fonte: str | None,
+    *,
+    texto_botao: str = "CADASTRE-SE AGORA",
+    logo_path: Path | None = None,
+    cor_primaria: tuple[int, int, int] = (220, 30, 30),
+    cor_secundaria: tuple[int, int, int] = (255, 255, 255),
+    imagem_bytes: bytes | None = None,
+    slide_num: int = 1,
+) -> Image.Image:
+    """Compõe um slide do Carrossel OldSchool."""
+    
+    PAD = 72
+    BRANCO = (255, 255, 255)
+    
+    if imagem_bytes:
+        canvas = _strip_letterbox(Image.open(BytesIO(imagem_bytes)).convert("RGB"))
+        canvas = _crop_cover(canvas, SLIDE_W, SLIDE_H)
+        
+        # Overlay escuro semi-transparente sobre a imagem de fundo
+        overlay = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 80))
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
+    else:
+        canvas = Image.new("RGB", (SLIDE_W, SLIDE_H), (30, 30, 35))
+
+    draw_tmp = ImageDraw.Draw(canvas)
+    
+    linha_gap = 12 if slide_num == 9 else 2
+
+    x_txt = y_txt = w_total = h_total = 0
+    f_t = None
+    linhas_t = []
+    y_logo = None
+    LOGO_H = 0
+    btn_y = btn_w = btn_h = 0
+    f_btn = None
+
+    # ── Slide 1: Logo embaixo, texto acima alinhado à esquerda ──
+    if slide_num == 1:
+        LOGO_H = 45
+        y_logo = SLIDE_H - PAD - LOGO_H
+        
+        MAX_H = int(SLIDE_H * 0.35)
+        MAX_W = int((SLIDE_W - PAD * 2) * 0.85)
+        f_t = _carregar_fonte(nome_fonte, 72, negrito=True)
+        for tam in [90, 76, 67, 58, 49, 40]:
+            f_candidata = _carregar_fonte(nome_fonte, tam, negrito=True)
+            linhas = _quebrar_texto(texto, f_candidata, MAX_W, draw_tmp)
+            h_total = sum(_lh(draw_tmp, l, f_candidata) + linha_gap for l in linhas)
+            if h_total <= MAX_H:
+                f_t = f_candidata
+                break
+        linhas_t = _quebrar_texto(texto, f_t, MAX_W, draw_tmp)
+        h_total = sum(_lh(draw_tmp, l, f_t) + linha_gap for l in linhas_t)
+        w_total = int(max([draw_tmp.textlength(l, font=f_t) for l in linhas_t] + [0]))
+        x_txt = PAD
+        y_txt = y_logo - 100 - h_total
+
+    # ── Slides 2, 5, 7: Texto bottom-left (até 40%) ──
+    elif slide_num in (2, 5, 7):
+        MAX_H = int(SLIDE_H * 0.40)
+        MAX_W = int((SLIDE_W - PAD * 2) * 0.85)
+        f_t = _carregar_fonte(nome_fonte, 49, negrito=True)
+        for tam in [63, 54, 45, 40, 36]:
+            f_candidata = _carregar_fonte(nome_fonte, tam, negrito=True)
+            linhas = _quebrar_texto(texto, f_candidata, MAX_W, draw_tmp)
+            h_total = sum(_lh(draw_tmp, l, f_candidata) + linha_gap for l in linhas)
+            if h_total <= MAX_H:
+                f_t = f_candidata
+                break
+        linhas_t = _quebrar_texto(texto, f_t, MAX_W, draw_tmp)
+        h_total = sum(_lh(draw_tmp, l, f_t) + linha_gap for l in linhas_t)
+        w_total = int(max([draw_tmp.textlength(l, font=f_t) for l in linhas_t] + [0]))
+        x_txt = PAD
+        y_txt = SLIDE_H - PAD - 100 - h_total
+
+    # ── Slide 3: Texto na direita (até 50%) ──
+    elif slide_num == 3:
+        MAX_H = int(SLIDE_H * 0.50)
+        MAX_W = int((SLIDE_W - PAD * 2) * 0.65)
+        x_start = SLIDE_W - MAX_W - PAD
+        
+        f_t = _carregar_fonte(nome_fonte, 45, negrito=True)
+        for tam in [54, 45, 40, 36, 31]:
+            f_candidata = _carregar_fonte(nome_fonte, tam, negrito=True)
+            linhas = _quebrar_texto(texto, f_candidata, MAX_W, draw_tmp)
+            h_total = sum(_lh(draw_tmp, l, f_candidata) + linha_gap for l in linhas)
+            if h_total <= MAX_H:
+                f_t = f_candidata
+                break
+        linhas_t = _quebrar_texto(texto, f_t, MAX_W, draw_tmp)
+        h_total = sum(_lh(draw_tmp, l, f_t) + linha_gap for l in linhas_t)
+        w_total = int(max([draw_tmp.textlength(l, font=f_t) for l in linhas_t] + [0]))
+        x_txt = x_start
+        y_txt = (SLIDE_H - h_total) // 2
+
+    # ── Slides 4, 6: Texto top-left, quase centro (20% pra cima, até 50%) ──
+    elif slide_num in (4, 6):
+        MAX_H = int(SLIDE_H * 0.50)
+        MAX_W = int((SLIDE_W - PAD * 2) * 0.85)
+        f_t = _carregar_fonte(nome_fonte, 49, negrito=True)
+        for tam in [63, 54, 45, 40, 36]:
+            f_candidata = _carregar_fonte(nome_fonte, tam, negrito=True)
+            linhas = _quebrar_texto(texto, f_candidata, MAX_W, draw_tmp)
+            h_total = sum(_lh(draw_tmp, l, f_candidata) + linha_gap for l in linhas)
+            if h_total <= MAX_H:
+                f_t = f_candidata
+                break
+        linhas_t = _quebrar_texto(texto, f_t, MAX_W, draw_tmp)
+        h_total = sum(_lh(draw_tmp, l, f_t) + linha_gap for l in linhas_t)
+        w_total = int(max([draw_tmp.textlength(l, font=f_t) for l in linhas_t] + [0]))
+        x_txt = PAD
+        y_txt = int(SLIDE_H * 0.35) - (h_total // 2)
+
+    # ── Slide 8: Texto centro, alinhado à esquerda, sem box ──
+    elif slide_num == 8:
+        MAX_W = int((SLIDE_W - PAD * 2) * 0.85)
+        f_t = _carregar_fonte(nome_fonte, 40, negrito=True)
+        for tam in [54, 45, 40, 36]:
+            f_candidata = _carregar_fonte(nome_fonte, tam, negrito=True)
+            linhas = _quebrar_texto(texto, f_candidata, MAX_W, draw_tmp)
+            h_total = sum(_lh(draw_tmp, l, f_candidata) + linha_gap for l in linhas)
+            if h_total <= int(SLIDE_H * 0.60):
+                f_t = f_candidata
+                break
+        linhas_t = _quebrar_texto(texto, f_t, MAX_W, draw_tmp)
+        h_total = sum(_lh(draw_tmp, l, f_t) + linha_gap for l in linhas_t)
+        w_total = int(max([draw_tmp.textlength(l, font=f_t) for l in linhas_t] + [0]))
+        x_txt = PAD
+        y_txt = (SLIDE_H - h_total) // 2
+
+    # ── Slide 9: Logo topo, CTA, Fake botão ──
+    elif slide_num == 9:
+        y_cursor = PAD + 120
+        LOGO_H = 60
+        y_logo = y_cursor
+        
+        y_cursor += LOGO_H + 50
+        MAX_W = int((SLIDE_W - PAD * 2) * 0.85)
+        f_t = _carregar_fonte(nome_fonte, 40, negrito=True)
+        linhas_t = _quebrar_texto(texto, f_t, MAX_W, draw_tmp)
+        h_total = sum(_lh(draw_tmp, l, f_t) + linha_gap for l in linhas_t)
+        w_total = int(max([draw_tmp.textlength(l, font=f_t) for l in linhas_t] + [0]))
+        x_txt = PAD
+        y_txt = y_cursor
+
+        # Botão Fake
+        btn_y = y_txt + h_total + 60
+        f_btn = _carregar_fonte(nome_fonte, 26, negrito=True)
+        btn_w = int(draw_tmp.textlength(texto_botao, font=f_btn)) + 100
+        btn_h = _lh(draw_tmp, texto_botao, f_btn) + 60
+
+    # --- GRADIENTE DE OPACIDADE (SCRIM) ---
+    grad_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+
+    if slide_num in (2, 4, 5, 6, 7):
+        gw = int(SLIDE_W * 0.6)
+        grad = _gradiente_lateral(gw, SLIDE_H, (0, 0, 0), alpha_esq=255, ponto_fade=0.0)
+        grad_layer.paste(grad, (0, 0))
+    elif slide_num == 3:
+        gw = int(SLIDE_W * 0.6)
+        grad = _gradiente_lateral(gw, SLIDE_H, (0, 0, 0), alpha_esq=255, ponto_fade=0.0)
+        grad = grad.rotate(180)
+        grad_layer.paste(grad, (SLIDE_W - gw, 0))
+    elif slide_num == 1:
+        gw = int(SLIDE_W * 0.7)
+        grad_esq = _gradiente_lateral(gw, SLIDE_H, (0, 0, 0), alpha_esq=255, ponto_fade=0.0)
+        grad_base = _gradiente_preto(SLIDE_W, SLIDE_H, alpha_topo=0, alpha_base=255, inicio_rel=0.5)
+        grad_layer.paste(grad_esq, (0, 0))
+        grad_layer = Image.alpha_composite(grad_layer, grad_base)
+    elif slide_num == 8:
+        grad_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 160))
+    elif slide_num == 9:
+        gw = int(SLIDE_W * 0.7)
+        grad_esq = _gradiente_lateral(gw, SLIDE_H, (0, 0, 0), alpha_esq=255, ponto_fade=0.0)
+        grad_top = _gradiente_preto(SLIDE_W, SLIDE_H, alpha_topo=255, alpha_base=0, inicio_rel=0.0)
+        grad_layer.paste(grad_esq, (0, 0))
+        grad_layer = Image.alpha_composite(grad_layer, grad_top)
+
+    # Aplica os riscos por baixo dos gradientes
+    canvas = _desenhar_overlay_giz(canvas)
+    
+    # Camada preta quase transparente por cima do giz para escurecer a imagem
+    overlay_escuro = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 80))
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay_escuro)
+    
+    # Nova camada de grain fotográfico real (ruído de alta frequência/ISO)
+    ruido = Image.effect_noise((SLIDE_W, SLIDE_H), 50).convert("RGBA")
+    r_noise, g_noise, b_noise, a_noise = ruido.split()
+    # Define opacidade baixa (35/255) para que o ruído se integre perfeitamente à foto
+    a_noise = a_noise.point(lambda p: 35)
+    ruido.putalpha(a_noise)
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), ruido)
+
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), grad_layer).convert("RGB")
+    
+    # Textos serifados gigantes e transparentes no fundo (Movido para cima de todos os efeitos)
+    if slide_num in (1, 3, 6, 9):
+        import random
+        from PIL import ImageChops
+        
+        palavras = ["CONGRESS", "LAW", "COMPLIANCE", "BRASIL", "GOVERNO"]
+        palavra = random.choice(palavras)
+        tam_fonte = random.randint(300, 420)
+        
+        txt_mask = Image.new("L", (SLIDE_W, SLIDE_H), 0)
+        draw_bg_txt = ImageDraw.Draw(txt_mask)
+        
+        is_top = random.choice([True, False])
+        if is_top:
+            tam_fonte = int(tam_fonte * 0.75)
+            f_bg = _carregar_fonte("Playfair Display", tam_fonte, negrito=False)
+            txt_w = int(draw_bg_txt.textlength(palavra, font=f_bg))
+            y_pos = random.randint(-int(tam_fonte * 0.40), int(tam_fonte * 0.35))
+            x_pos = random.randint(-int(txt_w * 0.30), int(SLIDE_W * 0.60))
+            draw_bg_txt.text((x_pos, y_pos), palavra, font=f_bg, fill=255, anchor="lm")
+            grad = _gradiente_preto(SLIDE_W, SLIDE_H, alpha_topo=255, alpha_base=0, inicio_rel=0.0).split()[3]
+            x_center = x_pos
+            y_center = y_pos
+        else:
+            tam_fonte = int(tam_fonte * 1.2)
+            f_bg = _carregar_fonte("Playfair Display", tam_fonte, negrito=False)
+            txt_w = int(draw_bg_txt.textlength(palavra, font=f_bg))
+            x_pos = random.randint(-int(txt_w * 0.65), int(SLIDE_W * 0.60))
+            draw_bg_txt.text((x_pos, SLIDE_H), palavra, font=f_bg, fill=255, anchor="lm")
+            grad = _gradiente_preto(SLIDE_W, SLIDE_H, alpha_topo=0, alpha_base=255, inicio_rel=0.0).split()[3]
+            x_center = x_pos
+            y_center = SLIDE_H
+            
+        # Cria manchas de transparência (desgaste natural da tinta) com gradientes suaves
+        holes_layer = Image.new("L", (SLIDE_W, SLIDE_H), 255)
+        draw_holes = ImageDraw.Draw(holes_layer)
+        for _ in range(35):
+            bx = x_center + random.randint(-50, txt_w + 50)
+            by = y_center + random.randint(-100, int(tam_fonte))
+            bw = random.randint(40, 120)
+            bh = random.randint(30, 80)
+            draw_holes.ellipse([bx - bw, by - bh, bx + bw, by + bh], fill=random.randint(0, 150))
+        
+        holes_layer = holes_layer.filter(ImageFilter.GaussianBlur(radius=30))
+        txt_mask = ImageChops.multiply(txt_mask, holes_layer)
+            
+        # Aplica o gradiente na máscara e aumenta a transparência
+        txt_mask = ImageChops.multiply(txt_mask, grad)
+        txt_mask = txt_mask.point(lambda p: int(p * 0.30))
+        
+        # Cria textura base com ruído mais forte (grain aumentado)
+        base_cor = Image.new("RGB", (SLIDE_W, SLIDE_H), (245, 245, 245))
+        ruido_txt = Image.effect_noise((SLIDE_W, SLIDE_H), 200).convert("RGB")
+        textura = Image.blend(base_cor, ruido_txt, 0.60).convert("RGBA")
+        
+        # Adiciona pequenos gradientes circulares pretos aleatórios por cima do texto
+        circ_layer = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
+        for _ in range(200):
+            cx = x_center + random.randint(-100, txt_w + 100)
+            cy = y_center + random.randint(-200, 200)
+            r_max = random.randint(40, 120)
+            circ = _gradiente_escuro_radial(r_max * 2, r_max * 2, r_max, r_max, r_max, alpha_center=255)
+            circ_layer.paste(circ, (cx - r_max, cy - r_max), circ)
+            
+        textura.alpha_composite(circ_layer)
+        textura.putalpha(txt_mask)
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), textura).convert("RGB")
+
+    draw = ImageDraw.Draw(canvas)
+
+    if slide_num == 1 and logo_path and logo_path.exists():
+        limg = _trim_logo(Image.open(logo_path).convert("RGBA"))
+        esc = LOGO_H / limg.height
+        lw = max(1, int(limg.width * esc))
+        limg = limg.resize((lw, LOGO_H), Image.LANCZOS)
+        canvas.paste(limg, (PAD, y_logo), limg)
+
+    elif slide_num == 9:
+        if logo_path and logo_path.exists():
+            limg = _trim_logo(Image.open(logo_path).convert("RGBA"))
+            esc = LOGO_H / limg.height
+            lw = max(1, int(limg.width * esc))
+            limg = limg.resize((lw, LOGO_H), Image.LANCZOS)
+            canvas.paste(limg, (PAD, y_logo), limg)
+        draw.rectangle([PAD, btn_y, PAD + btn_w, btn_y + btn_h], fill=cor_secundaria)
+        draw.text((PAD + btn_w / 2, btn_y + btn_h / 2), texto_botao, font=f_btn, fill=BRANCO, anchor="mm")
+
+    cy = y_txt
+    for linha in linhas_t:
+        draw.text((x_txt, cy), linha, font=f_t, fill=BRANCO)
+        cy += _lh(draw, linha, f_t) + linha_gap
+
+    return canvas
+
+def _gerar_fundo_oldschool(slide: dict, identidade_visual: dict) -> bytes | None:
+    prompt_imagem = slide.get("prompt_imagem") or slide.get("texto", "")
+    if not prompt_imagem: return None
+    estilo = identidade_visual.get("estilo_imagem", "")
+    cores = identidade_visual.get("primarias", [])
+    try: return _gerar_fundo(prompt_imagem, estilo, cores)
+    except Exception as e: print(f"[OldSchool] Erro IA slide {slide.get('slide')}: {e}"); return None
+
+def gerar_imagens_carrossel_oldschool(
+    slides: list[dict],
+    empresa_id: str,
+    stem: str,
+    identidade_visual: dict,
+    logo_index: int = 2,
+    callback: callable = None,
+) -> list[Path]:
+    pasta = OUTPUTS_DIR / empresa_id / "imagens_oldschool" / stem
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    cores = identidade_visual.get("primarias", [])
+    cores_sec = identidade_visual.get("secundarias", [])
+    fontes = identidade_visual.get("fontes", [])
+    fonte = fontes[0] if fontes else None
+    logo_p = logo_empresa(empresa_id, logo_index)
+    cor_prim = _primeira_cor(cores)
+    cor_sec = _segunda_cor(cores_sec[1:]) if len(cores_sec) > 1 else _segunda_cor(cores_sec)
+
+    paths = []
+    total = len(slides)
+    for i, slide in enumerate(slides):
+        n = int(slide.get("slide", i + 1))
+        dest = pasta / f"slide_{n:02d}.png"
+        print(f"[OldSchool] Gerando slide {n} → {dest.name}")
+
+        bg_cache = pasta / f"bg_{n:02d}.png"
+        print(f"[OldSchool] Gerando imagem IA para slide {n}...")
+        img_bytes = _gerar_fundo_oldschool(slide, identidade_visual)
+        if img_bytes: bg_cache.write_bytes(img_bytes)
+
+        imagem = compor_slide_oldschool(
+            texto=slide.get("texto", ""), nome_fonte=fonte, texto_botao=slide.get("texto_botao", "CADASTRE-SE AGORA"),
+            logo_path=logo_p, cor_primaria=cor_prim, cor_secundaria=cor_sec, imagem_bytes=img_bytes, slide_num=n
+        )
+        imagem.save(str(dest), "PNG")
+        paths.append(dest)
+        if callback: callback(i + 1, total)
+    return paths
+
+def gerar_imagem_slide_oldschool(
+    slide: dict,
+    empresa_id: str,
+    stem: str,
+    identidade_visual: dict,
+    logo_index: int = 2,
+    fundo_fixo: bool = False,
+) -> Path:
+    pasta = OUTPUTS_DIR / empresa_id / "imagens_oldschool" / stem
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    cores = identidade_visual.get("primarias", [])
+    cores_sec = identidade_visual.get("secundarias", [])
+    fontes = identidade_visual.get("fontes", [])
+    fonte = fontes[0] if fontes else None
+    logo_p = logo_empresa(empresa_id, logo_index)
+    cor_prim = _primeira_cor(cores)
+    cor_sec = _segunda_cor(cores_sec[1:]) if len(cores_sec) > 1 else _segunda_cor(cores_sec)
+    n = int(slide.get("slide", 1))
+    dest = pasta / f"slide_{n:02d}.png"
+
+    img_bytes = None
+    bg_cache = pasta / f"bg_{n:02d}.png"
+    if fundo_fixo and bg_cache.exists(): img_bytes = bg_cache.read_bytes()
+    else:
+        img_bytes = _gerar_fundo_oldschool(slide, identidade_visual)
+        if img_bytes: bg_cache.write_bytes(img_bytes)
+        elif bg_cache.exists(): img_bytes = bg_cache.read_bytes()
+
+    imagem = compor_slide_oldschool(
+        texto=slide.get("texto", ""), nome_fonte=fonte, texto_botao=slide.get("texto_botao", "CADASTRE-SE AGORA"),
+        logo_path=logo_p, cor_primaria=cor_prim, cor_secundaria=cor_sec, imagem_bytes=img_bytes, slide_num=n
+    )
+    imagem.save(str(dest), "PNG")
+    return dest
+
+def listar_imagens_oldschool(empresa_id: str, stem: str) -> list[Path]:
+    pasta = OUTPUTS_DIR / empresa_id / "imagens_oldschool" / stem
+    if not pasta.exists(): return []
     return sorted(pasta.glob("slide_*.png"), key=lambda p: int(p.stem.split("_")[-1]))
 
 
@@ -1823,7 +2296,7 @@ def gerar_imagens_carrossel_tweet(
             fundo_bytes = _gerar_fundo_tweet(slide, identidade_visual)
 
         imagem = compor_slide_tweet(
-            slide["titulo"], slide.get("texto", ""), empresa_nome, fonte,
+            slide.get("titulo", ""), slide.get("texto", ""), empresa_nome, fonte,
             logo_path=logo_p, cor_primaria=cor_prim, cor_circulo=cor_circ,
             imagem_bytes=fundo_bytes, slide_num=n,
         )
@@ -1879,7 +2352,7 @@ def gerar_imagem_slide_tweet(
         fundo_bytes = _gerar_fundo_tweet(slide, identidade_visual)
 
     imagem = compor_slide_tweet(
-        slide["titulo"], slide.get("texto", ""), empresa_nome, fonte,
+        slide.get("titulo", ""), slide.get("texto", ""), empresa_nome, fonte,
         logo_path=logo_p, cor_primaria=cor_prim, cor_circulo=cor_circ,
         imagem_bytes=fundo_bytes, slide_num=n,
     )
@@ -1992,13 +2465,14 @@ def compor_slide_misto_dd(
             canvas = base_l2.convert("RGB")
 
         # Dimensões da imagem IA
+        LATERAL_PAD    = 56
         LOGO_H         = 56
         LOGO_GAP       = 24                        # gap entre imagem e logo
         LOGO_PAD_BOT   = 32                        # margem abaixo da logo
         IMG_PAD_BOTTOM = LOGO_GAP + LOGO_H + LOGO_PAD_BOT
         IMG_H          = int(SLIDE_H * 0.56)
-        IMG_W          = SLIDE_W - PAD * 2
-        img_x          = PAD
+        IMG_W          = SLIDE_W - LATERAL_PAD * 2
+        img_x          = LATERAL_PAD
         img_y          = SLIDE_H - IMG_PAD_BOTTOM - IMG_H
 
         # Imagem IA arredondada no rodapé
@@ -2028,7 +2502,8 @@ def compor_slide_misto_dd(
 
         # Título grande colado à imagem (maiúsculo, sem descrição, sem traços)
         draw         = ImageDraw.Draw(canvas)
-        AREA_TEXTO_H = img_y - PAD
+        TOP_PAD      = 40
+        AREA_TEXTO_H = img_y - TOP_PAD
         titulo_up    = titulo.upper()
 
         # Pré-carrega seta para conhecer largura real
@@ -2041,28 +2516,28 @@ def compor_slide_misto_dd(
             _arr_w     = max(1, int(_arrow_img.width * (_arr_h / _arrow_img.height)))
             _arrow_img = _arrow_img.resize((_arr_w, _arr_h), Image.LANCZOS)
 
-        # Larguras por linha: primeira usa width completo, cada linha seguinte reduz 8%
-        max_w_full  = SLIDE_W - PAD * 2
-        _seta_gap   = _arr_w + PAD
+        # Larguras por linha: usa width completo, mas reserva espaço para a seta na última linha
+        max_w_full  = SLIDE_W - LATERAL_PAD * 2
+        _seta_gap   = _arr_w + 32
 
         def _largura_linha(idx: int, total: int) -> int:
-            if idx == 0:
-                reducao = 0.0
-            elif idx == total - 2:   # penúltima linha
-                reducao = 0.10 * idx
-            else:
-                reducao = 0.08 * idx
-            w = max_w_full * (1.0 - reducao)
+            w = max_w_full
             if idx == total - 1:     # última linha: reserva espaço para seta
                 w -= _seta_gap
-            return max(int(w), max_w_full // 3)
+            return max(int(w), max_w_full // 2)
 
         # Fit de tamanho: quebra com widths variáveis e verifica altura total
-        TITULO_GAP    = -2
+        MIN_GAP_IMG     = 40
+        MAX_H_PERMITIDO = AREA_TEXTO_H - MIN_GAP_IMG
+
         f_titulo      = _carregar_fonte(nome_fonte, 90, negrito=True)
         linhas_titulo = None
-        for tam in [260, 240, 220, 200, 184, 168, 152, 136, 120, 104, 90]:
+        titulo_gap    = -2
+        
+        for tam in [265, 245, 224, 204, 188, 171, 155, 139, 122, 110, 98, 92, 86, 78, 71, 65, 59, 53, 47, 41, 37, 33]:
             f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
+            t_gap = -int(tam * 0.10)  # Leading bem justo (1.0x) para maximizar o tamanho da fonte
+            
             # Primeira passagem com width completo para estimar nº de linhas
             lt_est = _quebrar_texto(titulo_up, f_t, max_w_full, draw)
             n_est  = len(lt_est)
@@ -2083,28 +2558,40 @@ def compor_slide_misto_dd(
                     linha_atual = palavra
             if linha_atual:
                 lt.append(linha_atual)
-            h_t = sum(_lh(draw, l, f_t) + TITULO_GAP for l in lt)
-            if h_t <= AREA_TEXTO_H - 64:
-                f_titulo, linhas_titulo = f_t, lt
+            
+            h_t = sum(_lh(draw, l, f_t) + t_gap for l in lt)
+            if h_t <= MAX_H_PERMITIDO:
+                f_titulo, linhas_titulo, titulo_gap = f_t, lt, t_gap
                 break
+                
         if linhas_titulo is None:
+            # Fallback seguro
+            f_titulo = _carregar_fonte(nome_fonte, 33, negrito=True)
+            titulo_gap = -int(33 * 0.10)
             linhas_titulo = _quebrar_texto(titulo_up, f_titulo, max_w_full, draw)
 
-        titulo_h = sum(_lh(draw, l, f_titulo) + TITULO_GAP for l in linhas_titulo)
-        # Posiciona deixando um respiro maior na base (40% do espaço livre no topo, 60% na base)
-        espaco_livre = img_y - PAD - titulo_h
-        y = PAD + max(0, int(espaco_livre * 0.4))
+        titulo_h = sum(_lh(draw, l, f_titulo) + titulo_gap for l in linhas_titulo)
+        
+        # Posiciona o título mais próximo da imagem, devolvendo a gravidade para baixo
+        espaco_livre = img_y - TOP_PAD - titulo_h
+        if espaco_livre <= MIN_GAP_IMG:
+            y = max(TOP_PAD, img_y - MIN_GAP_IMG - titulo_h)
+        else:
+            y = TOP_PAD + min(int(espaco_livre * 0.80), espaco_livre - MIN_GAP_IMG)
 
         # Renderiza cada linha
         for i, linha in enumerate(linhas_titulo):
             lh = _lh(draw, linha, f_titulo)
-            draw.text((PAD, y), linha, font=f_titulo, fill=BRANCO)
-            y += lh + TITULO_GAP
+            draw.text((LATERAL_PAD, y), linha, font=f_titulo, fill=BRANCO)
+            y += lh + titulo_gap
 
-        # Seta posicionada verticalmente no centro do gap entre o título e a imagem
+        # Seta posicionada na lateral direita, garantindo que nunca sobreponha a imagem
         if _arrow_img is not None:
-            _ax        = SLIDE_W - 16 - _arr_w
-            _ay        = ((y - TITULO_GAP) + img_y) // 2 - _arr_h // 2
+            _ax        = SLIDE_W - LATERAL_PAD - _arr_w
+            # O texto terminou em y - titulo_gap. Calculamos o meio do gap:
+            _ay_centro = ((y - titulo_gap) + img_y) // 2 - _arr_h // 2
+            # Evita sobreposição com a imagem: garante pelo menos 16px de distância
+            _ay        = min(_ay_centro, img_y - _arr_h - 16)
             _base_seta = canvas.convert("RGBA")
             _base_seta.paste(_arrow_img, (_ax, _ay), _arrow_img)
             canvas     = _base_seta.convert("RGB")
@@ -2784,7 +3271,7 @@ def gerar_imagens_carrossel_misto_dd(
 
         fonte = fonte_prim if n == 1 else fonte_sec
         imagem = compor_slide_misto_dd(
-            slide["titulo"], slide.get("texto", ""), empresa_nome, fonte,
+            slide.get("titulo", ""), slide.get("texto", ""), empresa_nome, fonte,
             logo_path=logo_p, logo_path_2=logo_p2, url_site=url_site,
             cor_secundaria=cor_sec,
             cor_primaria=cor_prim, imagem_bytes=img_bytes, slide_num=n,
@@ -2847,7 +3334,7 @@ def gerar_imagem_slide_misto_dd(
 
     fonte  = fonte_prim if n == 1 else fonte_sec
     imagem = compor_slide_misto_dd(
-        slide["titulo"], slide.get("texto", ""), empresa_nome, fonte,
+        slide.get("titulo", ""), slide.get("texto", ""), empresa_nome, fonte,
         logo_path=logo_p, logo_path_2=logo_p2, url_site=url_site,
         cor_secundaria=cor_sec,
         cor_primaria=cor_prim, imagem_bytes=img_bytes, slide_num=n,

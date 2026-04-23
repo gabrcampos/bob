@@ -958,7 +958,7 @@ def gerar_carrossel_tweet(
 # ─────────────────────────────────────────────
 
 ESTRUTURA_CARROSSEL_MISTO_DD = """
-Slide 1 — Capa/Gancho: APENAS título (máx 18 palavras, gancho imediato e impactante). NÃO gere texto para este slide (deixe "texto" como string vazia ""). prompt_imagem: cena física de negócios/logística sem texto.
+Slide 1 — Capa/Gancho: APENAS título (máx 18 palavras, gancho imediato e impactante). NÃO pule este slide! O campo "texto" deve receber EXATAMENTE uma string vazia "". prompt_imagem: cena física de negócios/logística sem texto.
 Slide 2 — Contexto: apresente o problema de forma conceitual. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM dados ou números, foco no conceito e na realidade do problema). prompt_imagem: cena contextual relacionada ao problema.
 Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, foco na ideia central sem dados). prompt_imagem: cena que ilustre a causa.
 Slide 4 — Impactos: liste 3 a 5 consequências operacionais conceituais usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). SEM números, percentuais ou fontes — apenas os conceitos e impactos. prompt_imagem: cena de ambiente impactado negativamente.
@@ -981,7 +981,7 @@ Gere um Carrossel Misto DD de 8 slides sobre o tema "{tema}":
 
 Cada slide deve ter:
 - "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 18 palavras; slides 5 e 8 devem ter máx 6 palavras)
-- "texto": corpo do slide conforme a instrução de cada slide — seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante; NÃO use dados numéricos, percentuais, estatísticas ou citações de fontes — foque apenas nos conceitos e ideias
+- "texto": corpo do slide conforme a instrução. No Slide 1 OBRIGATORIAMENTE deve ser "". Nos demais, seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante; NÃO use dados numéricos, percentuais, estatísticas ou citações de fontes — foque apenas nos conceitos e ideias
 - "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cenas visualmente distintas entre slides; (b) cenas físicas concretas com pessoas, objetos ou ambientes reais; (c) ABSOLUTAMENTE PROIBIDO: qualquer texto, letras, números, letreiros, telas com escrita ou elementos tipográficos; (d) deixe vazio ("") no slide 5.
 
 Gere também uma legenda para acompanhar o carrossel na publicação:
@@ -1057,3 +1057,80 @@ def gerar_carrossel_misto_dd(
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
 
     raise RuntimeError("Falha ao gerar Carrossel Misto DD após 3 tentativas.")
+
+
+# ─────────────────────────────────────────────
+# Carrossel OldSchool
+# ─────────────────────────────────────────────
+
+ESTRUTURA_CARROSSEL_OLDSCHOOL = """
+Slide 1 — Capa: APENAS texto (máx 14 palavras, gancho imediato). prompt_imagem: cena rotineira de decisão de governo/poder público sem texto.
+Slide 2 — Problema: Texto com no máximo 25 palavras. prompt_imagem: cena contextual em escritório de governo, plenário ou judiciário.
+Slide 3 — Complicação: Texto com no máximo 25 palavras. prompt_imagem: OBRIGATÓRIO incluir na descrição que a parte DIREITA da imagem deve ser mais escura/limpa para receber texto. Cena no legislativo/executivo.
+Slide 4 — Impacto: Texto com no máximo 25 palavras. prompt_imagem: OBRIGATÓRIO incluir na descrição que a parte SUPERIOR ESQUERDA deve ser mais escura/limpa para receber texto.
+Slide 5 — Agravante: Texto com no máximo 25 palavras. prompt_imagem: cena contextual de rotina governamental.
+Slide 6 — Consequência: Texto com no máximo 25 palavras. prompt_imagem: OBRIGATÓRIO incluir na descrição que a parte SUPERIOR ESQUERDA deve ser mais escura/limpa.
+Slide 7 — Transição: Texto com no máximo 25 palavras. prompt_imagem: cena contextual de rotina de relações governamentais.
+Slide 8 — Solução: Explicação super objetiva (máx 25 palavras) de como a empresa resolve o problema (ex: "Na [Nome], o [Produto] cruza os dados..."). prompt_imagem: cena de análise de dados no contexto de governo/legislativo.
+Slide 9 — CTA: Texto CTA (ex: "Leve dados para sua próxima reunião. Conheça a [Nome]."). OBRIGATÓRIO incluir um campo "texto_botao" (padrão: "CADASTRE-SE AGORA"). prompt_imagem: cena de escritório governamental conclusiva.
+"""
+
+PROMPT_OLDSCHOOL = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
+Você produz conteúdo editorial para a {empresa}.
+O público-alvo são {publico_alvo}.
+Todo o conteúdo deve ser em português brasileiro.
+{contexto_compilado}
+{historico_recente}
+{padrao_qualidade}
+
+Gere um Carrossel OldSchool de 9 slides sobre o tema "{tema}":
+{estrutura}
+
+Cada slide deve ter:
+- "titulo": título muito curto (2-3 palavras) apenas para identificação interna.
+- "texto": o texto principal do slide conforme as regras da estrutura. NO MÁXIMO 25 PALAVRAS (Slide 1: máx 14 palavras).
+- "texto_botao": apenas para o slide 9 (padrão: "CADASTRE-SE AGORA"). Nos demais slides, omita este campo ou deixe vazio.
+- "prompt_imagem": descrição objetiva em inglês da cena de fundo (1-2 frases). REGRAS DE IMAGEM: OBRIGATÓRIO focar em cenas rotineiras de pessoas que tomam decisões de governo (escritórios, plenários, tribunais, gabinetes legislativos) para gerar forte identificação. PROIBIDO usar texto, letras ou números na imagem.
+
+Gere também uma legenda:
+- 2 a 4 frases complementares ao carrossel.
+- Tom direto, máx 220 palavras.
+
+Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
+Estrutura exata:
+{{
+  "slides": [
+    {{"slide": 1, "titulo": "...", "texto": "...", "prompt_imagem": "..."}},
+    ... (9 slides, o slide 9 deve conter "texto_botao")
+  ],
+  "legenda": "..."
+}}"""
+
+def gerar_carrossel_oldschool(
+    tema: str,
+    empresa: str = "Tecnosolve",
+    empresa_id: str = "tecnosolve",
+    publico_alvo: str = "CIOs e CTOs do varejo brasileiro",
+    url_site: str = "",
+) -> dict:
+    client = _get_client()
+    bloco_ctx = _bloco_contexto(empresa_id, url_site)
+    prompt = PROMPT_OLDSCHOOL.format(
+        empresa=empresa, publico_alvo=publico_alvo, tema=tema,
+        estrutura=ESTRUTURA_CARROSSEL_OLDSCHOOL, contexto_compilado=bloco_ctx,
+        historico_recente=_bloco_historico(empresa_id), padrao_qualidade=PADRAO_QUALIDADE,
+    )
+    print(f"[LLM] Gerando Carrossel OldSchool para: '{tema}' ({empresa})...")
+    config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())], thinking_config=types.ThinkingConfig(thinking_budget=0))
+    for tentativa in range(3):
+        try:
+            try: response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+            except Exception: response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING)
+            _text = _get_response_text(response)
+            if not _text: response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING); _text = _get_response_text(response)
+            conteudo = _parse_json(_text)
+            slides = conteudo.get("slides", [])
+            if slides: return {"slides": slides, "legenda": conteudo.get("legenda", "")}
+            raise ValueError("JSON sem 'slides'")
+        except Exception as e: print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
+    raise RuntimeError("Falha ao gerar Carrossel OldSchool após 3 tentativas.")
