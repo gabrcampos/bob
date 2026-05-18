@@ -1,35 +1,5 @@
 [
   {
-    "data": "2026-03-31",
-    "tema": "relação entre varejo e eleições 2026",
-    "dados_usados": [
-      "[Slide 1] Agilidade em Cenários Voláteis — Em 2024, 73% dos consumidores globais ajustaram suas compras em menos de 60 dias frente a novas condições econômicas.",
-      "[Slide 2] Desafios do Varejo em Incerto — A instabilidade política e econômica amplifica vulnerabilidades operacionais já existentes, exigindo uma reavaliação estratégica da TI no varejo e atacado.",
-      "[Slide 3] Raiz da Inflexibilidade Operacional — A fragmentação dos dados entre sistemas legados e plataformas modernas impede uma visão unificada e em tempo real, travando a capacidade de resposta do varejo.",
-      "[Slide 4] Impactos Diretos nos Negócios — ✗ Perda de 3-5% da receita anual devido a má gestão de estoque e previsões imprecisas.\n✗ Aumento de 15% nos custos operacionais com ineficiências de cadeia de suprimentos.\n✗ Redução de até 20% na satisfação do cliente por inconsistências na disponibilidade de produtos.",
-      "[Slide 5] Soluções Pontuais Falham — Adoção de ferramentas isoladas ou otimizações locais que não endereçam a complexidade da integração sistêmica não oferecem a resiliência necessária para ambientes de alta volatilidade.",
-      "[Slide 6] Nike Otimiza Cadeia Global — A Nike reduziu em até 30% seus prazos de entrega globalmente, otimizando o estoque através de um investimento massivo em digitalização da cadeia de suprimentos e analytics.",
-      "[Slide 7] A Base da Adaptabilidade — Arquiteturas de dados robustas, orientadas a eventos e integradas, formam o alicerce para a resiliência operacional, permitindo visibilidade e tomada de decisão preditiva.",
-      "[Slide 8] Flexibilidade e Previsão — Inditex (Zara): agilidade da cadeia de suprimentos com dados de vendas em tempo real, permitindo novos designs em 2 semanas.\n---\nKroger: IA e analytics para promoções personalizadas e otimização de estoque, reduzindo rupturas.",
-      "[Slide 9] Caminhos para a Resiliência — Priorize parcerias estratégicas com expertise em integração de sistemas heterogêneos e um compromisso com a estabilidade e a capacidade de adaptação a longo prazo."
-    ]
-  },
-  {
-    "data": "2026-03-31",
-    "tema": "relação entre varejo e eleições 2026",
-    "dados_usados": [
-      "[Slide 1] R$ 4 Milhões de Perdas/Hora no Varejo — O varejo brasileiro registra R$ 4 milhões em perdas não identificadas, fraudes e quebras operacionais por hora, totalizando R$ 35 bilhões em 2023.",
-      "[Slide 2] Sintomas da Incerteza Varejista — O ambiente eleitoral de 2026 intensifica a volatilidade, deslocando a atenção do varejo para a precificação, custos e eficiência operacional. O consumidor brasileiro demonstra maior seletividade e sensibilidade a preços neste cenário.",
-      "[Slide 3] A Raiz da Rigidez Operacional — A fragmentação de dados em sistemas legados impede a visão unificada e em tempo real, comprometendo a agilidade necessária para o varejo moderno. Cerca de 54% dos executivos relatam levar dias para adicionar novos dados às suas plataformas.",
-      "[Slide 4] Consequências Diretas nos Resultados — A ineficiência e a falta de visibilidade acarretam custos significativos. As perdas no varejo representaram 1,57% das vendas líquidas em 2023, o maior percentual desde 2015.",
-      "[Slide 5] Abordagens Paliativas Falham — Ferramentas isoladas ou otimizações pontuais não abordam a complexidade intrínseca da cadeia de valor do varejo, que exige integração profunda e visão sistêmica. Isso resulta em decisões baseadas em informações defasadas.",
-      "[Slide 6] Previsibilidade Reduz Rupturas — A Cooperativa Vinícola Garibaldi utiliza modelos preditivos e IA para analisar dados históricos e variáveis externas, otimizando o planejamento para datas sazonais e reduzindo rupturas nas gôndolas.",
-      "[Slide 7] Arquitetura de Dados Resiliente — A base para a adaptabilidade é uma arquitetura de dados robusta, orientada a eventos, que integre informações em tempo real e permita a análise preditiva. Isso gera insights para decisões ágeis e antecipação de riscos.",
-      "[Slide 8] Múltiplos Caminhos para Resiliência — Rede varejista global: diversificou fornecedores em múltiplas regiões, mitigando riscos de interrupções locais e garantindo a continuidade do abastecimento.\n---\nP&G: otimizou a cadeia de suprimentos por meio de monitoramento em tempo real e colaboração com fornecedores, atendendo picos de demanda.",
-      "[Slide 9] Fatores-Chave para a Escolha Estratégica — Priorize flexibilidade para integrar ambientes heterogêneos, visibilidade de ponta a ponta em tempo real e expertise para soluções customizadas. O objetivo é garantir estabilidade e crescimento a longo prazo em cenários voláteis."
-    ]
-  },
-  {
     "data": "2026-04-06",
     "tema": "https://veja.abril.com.br/coluna/radar-economico/transacoes-por-cartao-aumentam-18-em-dois-anos-no-brasil-diz-nuclea/",
     "dados_usados": [
@@ -297,6 +267,36 @@
       "[Slide 7] Arquitetura da Convergência — Plataformas de integração de dados e arquiteturas orientadas a eventos permitem o fluxo contínuo de informações entre marketing, vendas e serviços.",
       "[Slide 8] Quem Cresce vs. Quem Estagna — Líderes integram dados de receita para acelerar crescimento e retenção.\n---\nOutros mantêm silos, perdendo oportunidades e diluindo o valor do cliente.",
       "[Slide 9] O Que Considerar — Avalie a capacidade da arquitetura para suportar integração com legados, escalabilidade e flexibilidade para novas tecnologias sem sacrificar a governança."
+    ]
+  },
+  {
+    "data": "2026-05-06",
+    "tema": "Otimização de Custos Logísticos: Como a IA operacional reduz perdas por ruptura e melhora a previsão de demanda no e-commerce.",
+    "dados_usados": [
+      "[Slide 1] IA OTIMIZA CUSTOS LOGÍSTICOS — A Inteligência Artificial redefine a gestão da última milha, transformando perdas em lucro.",
+      "[Slide 2] Perdas Ocultas na Logística — A ineficiência logística se manifesta em atrasos, rupturas de estoque e custos inesperados, corroendo margens no varejo. A falta de visibilidade impede decisões ágeis e informadas, resultando em reações tardias e soluções paliativas.",
+      "[Slide 3] Raiz da Ineficiência — A persistência de dados fragmentados e a ausência de uma integração sistêmica em tempo real são a principal causa. Sistemas isolados e processos manuais criam lacunas de informação, inviabilizando uma gestão proativa.",
+      "[Slide 4] Impactos Diretos nos Negócios — As consequências se traduzem em clientes insatisfeitos, excesso de estoque, perdas por ruptura e diluição da margem. A reputação da marca e a competitividade no mercado são diretamente afetadas.",
+      "[Slide 5] Soluções Superficiais Falham — Investir em ferramentas pontuais ou relatórios retroativos sem uma integração profunda apenas maquia os problemas. Essas abordagens não endereçam a causa raiz da falta de visibilidade e automação, perpetuando ciclos de ineficiência.",
+      "[Slide 6] Visão Preditiva Reverte Custos — A capacidade de antecipar problemas e otimizar operações antes que ocorram é o divisor de águas na gestão logística.",
+      "[Slide 7] IA Operacional no Centro — Plataformas de IA operacional e modelos de linguagem, integrados a sistemas legados e em nuvem, transformam dados brutos em inteligência acionável. Isso permite otimização contínua e tomada de decisão em tempo real.",
+      "[Slide 8] Quem Otimiza vs. Quem Resiste — Líderes que adotam a IA operacional transformam complexidade em vantagem, otimizando custos e elevando a experiência do cliente.---Outros que se mantêm na gestão reativa, perpetuam perdas e estagnam diante da concorrência.\n",
+      "[Slide 9] Fatores Chave para Sucesso — Priorize soluções que suportem a escala de sua operação, garantam interoperabilidade com sistemas existentes e ofereçam flexibilidade para evoluir. Considere a capacidade de integrar novas fontes de dados e tecnologias, assegurando governança e segurança."
+    ]
+  },
+  {
+    "data": "2026-05-13",
+    "tema": "Gestão de Verbas Comerciais com Automação: Precisão na Apuração de Bonificações e Controle Orçamentário",
+    "dados_usados": [
+      "[Slide 1] Verbas Comerciais: Lucro ou Perda? — A cada ano, empresas perdem milhões em verbas comerciais mal geridas. A automação é a virada.",
+      "[Slide 2] A Ineficiência da Gestão Manual — A gestão de verbas comerciais, quando manual, apresenta desafios que corroem a rentabilidade e a eficiência operacional. A complexidade dos acordos e a falta de ferramentas adequadas levam a um cenário de constante incerteza.",
+      "[Slide 3] Raiz da Discrepância Financeira — A persistência de processos manuais e a fragmentação de dados entre diferentes sistemas são a causa fundamental. A falta de uma fonte única de verdade impossibilita a conciliação precisa e em tempo real dos compromissos e recebimentos.",
+      "[Slide 4] Impactos na Saúde Financeira — A ineficiência na gestão de verbas comerciais tem consequências diretas na saúde financeira das empresas e na capacidade de crescimento sustentável. A falta de visibilidade compromete a tomada de decisão estratégica.",
+      "[Slide 5] Soluções Paliativas Não Sustentam — Investir em planilhas mais complexas ou em auditorias pontuais de verbas não resolve o problema estrutural. Essas abordagens apenas mascaram a falta de automação e integração, perpetuando o ciclo de perdas e retrabalho.",
+      "[Slide 6] Precisão é Poder Financeiro — A capacidade de automatizar a apuração de bonificações e o controle orçamentário transforma a gestão de verbas em um centro de lucro, não em um custo. A visibilidade em tempo real é o alicerce para decisões financeiras estratégicas e eficazes.",
+      "[Slide 7] Arquitetura da Governança Orçamentária — Plataformas de gestão de verbas, integradas a sistemas de ERP e BI, orquestram o fluxo de dados em um ecossistema coerente. Isso permite a apuração automatizada e o monitoramento contínuo, transformando dados brutos em inteligência acionável.",
+      "[Slide 8] Líderes Otimizam vs. Deixam Escapar — Líderes visionários adotam a automação para controlar verbas e maximizar retornos, transformando a complexidade em vantagem competitiva.\n---\nOutros resistem à mudança, perpetuando perdas e estagnando diante da concorrência, perdendo oportunidades de crescimento.",
+      "[Slide 9] Fatores-Chave para o Sucesso — Priorize soluções que suportem a escala da sua operação e garantam interoperabilidade com sistemas existentes. Considere a flexibilidade para integrar novas fontes de dados e tecnologias, assegurando governança e segurança."
     ]
   }
 ]

@@ -141,22 +141,23 @@ def _linhas_bullet(
     max_w: int,
     draw: ImageDraw.ImageDraw,
 ) -> list[tuple[str, str]]:
-    """Retorna lista de (prefixo, linha) para texto com bullets ✓/✗ separados por \\n.
+    """Retorna lista de (prefixo, linha) para texto com bullets ✓/✗/•/*/- separados por \\n.
     O prefixo é '✓', '✗' ou '' para linhas de continuação."""
     import re
     # Normaliza bullets inline ("; ✓ " ou "; ✗ ") para quebras de linha
-    texto = re.sub(r"[;,]?\s*([✓✗])\s+", lambda m: "\n" + m.group(1) + " ", texto)
+    texto = re.sub(r"[;,]?\s*([✓✗•*-])\s*", lambda m: "\n" + m.group(1) + " ", texto)
     result: list[tuple[str, str]] = []
     items = [l.strip() for l in texto.split("\n") if l.strip()]
     for item in items:
-        if item.startswith("✓") or item.startswith("✗"):
+        bullet_chars = ("✓", "✗", "•", "*", "-")
+        if item.startswith(bullet_chars):
             prefix = item[0]
             rest   = item[1:].lstrip()
-            prefix_txt = _render_bullet_symbol(prefix) + " "
-            prefix_w   = int(draw.textlength(prefix_txt, font=fonte)) + 8
+            render_prefix = prefix if prefix in ("✓", "✗") else "•" # For generic bullets, use standard •
+            prefix_w   = int(draw.textlength(_render_bullet_symbol(render_prefix) + " ", font=fonte)) + 8
             sublins    = _quebrar_texto(rest, fonte, max_w - prefix_w, draw)
             for j, sl in enumerate(sublins):
-                result.append((prefix if j == 0 else "", sl))
+                result.append((render_prefix if j == 0 else "", sl))
         else:
             for sl in _quebrar_texto(item, fonte, max_w, draw):
                 result.append(("", sl))
@@ -167,6 +168,7 @@ def _render_bullet_symbol(symbol: str) -> str:
     """Converte ✓ e ✗ para versões mais grossas para melhor renderização.
     ✓ (U+2713) → ✔ (U+2714) Heavy check mark
     ✗ (U+2717) → ✖ (U+2716) Heavy multiplication X
+    * or - to •
     """
     return symbol.replace("✓", "✔").replace("✗", "✖")
 
@@ -204,6 +206,7 @@ def _tentar_desenhar_asset_simbolo(
             return False
         asset_path = assets_dir / arquivo_fallback
         if not asset_path.exists():
+            print(f"[Imagens] Asset {arquivo} not found, falling back to text rendering.")
             return False
     
     try:
@@ -220,6 +223,18 @@ def _tentar_desenhar_asset_simbolo(
         print(f"[Imagens] Erro ao desenhar asset {arquivo}: {e}")
         return False
 
+def _render_bullet_and_text(canvas: Image.Image, draw: ImageDraw.ImageDraw, prefix: str, linha: str, font: ImageFont.FreeTypeFont, text_color: tuple, x_pos: int, y_pos: int) -> int:
+    """Renders a bullet symbol and the corresponding text, returning the indentation for the next line."""
+    cor_prefix = (50, 200, 80) if prefix == "✓" else (210, 55, 55) if prefix == "✗" else text_color
+    png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, x_pos, y_pos, 40, y_offset=10)
+    if png_ok:
+        indent = 48
+    else:
+        prefix_txt = _render_bullet_symbol(prefix) + " "
+        draw.text((x_pos, y_pos), prefix_txt, font=font, fill=cor_prefix)
+        indent = int(draw.textlength(prefix_txt, font=font)) + 8
+    draw.text((x_pos + indent, y_pos), linha, font=font, fill=text_color)
+    return indent
 
 # ─────────────────────────────────────────────
 # Fontes
@@ -728,8 +743,8 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
         y += 16
         if lb is not None:
             for prefix, linha in lb:
-                if prefix in ("✓", "✗"):
-                    cor_p = (50, 220, 80) if prefix == "✓" else (220, 60, 60)
+                if prefix in ("✓", "✗", "•"):
+                    cor_p = (50, 220, 80) if prefix == "✓" else (220, 60, 60) if prefix == "✗" else (255, 255, 255)
                     # Tenta desenhar asset PNG
                     png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, pad, y, 40)
                     if png_ok:
@@ -811,8 +826,8 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
         y += 28
         if lb is not None:
             for prefix, linha in lb:
-                if prefix in ("✓", "✗"):
-                    cor_p = (50, 220, 80) if prefix == "✓" else (220, 60, 60)
+                if prefix in ("✓", "✗", "•"):
+                    cor_p = (50, 220, 80) if prefix == "✓" else (220, 60, 60) if prefix == "✗" else (255, 255, 255)
                     # Tenta desenhar asset PNG
                     png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, pad, y, 40)
                     if png_ok:
@@ -932,7 +947,7 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
             ty += _lh(draw, linha, f_tit) + 10
 
         # Textos dos painéis
-        partes = texto.split("\n---\n")
+        partes = texto.split("---")
         texto_esq = partes[0].strip() if partes else ""
         texto_dir = partes[1].strip() if len(partes) > 1 else texto_esq
 
@@ -1157,34 +1172,37 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
     # Slide 7 (variantes C/split) tem max_w de ~metade do slide; reduz título para evitar overflow
     if slide_num == 7 and variante in ("C", "C1", "C2", "C3"):
         _CANDIDATOS = [(40, 30), (34, 26), (28, 22), (24, 18), (20, 15), (18, 13)]
-    else:
+    else: 
         _CANDIDATOS = [(62, 34), (54, 30), (46, 26), (38, 22), (32, 18), (26, 15), (22, 13)]
     f_titulo = f_corpo = None
     linhas_titulo = linhas_corpo = []
     h_titulo_total = h_corpo_total = 0
     _usar_bullets = slide_num in _SLIDES_COM_BULLETS
     linhas_bullet_corpo: list[tuple[str, str]] | None = None
+    
+    # Inicializa linhas_corpo para garantir que sempre tenha um valor
+    linhas_corpo = []
 
     for tam_t, tam_c in _CANDIDATOS:
         f_t = _carregar_fonte(nome_fonte, tam_t, negrito=True)
         f_c = _carregar_fonte(nome_fonte, tam_c, negrito=_is_capa)
         lt  = _quebrar_texto(titulo, f_t, max_w, draw)
         if _usar_bullets:
-            lb = _linhas_bullet(texto, f_c, max_w, draw)
-            lc = [l for _, l in lb]
+            current_lb = _linhas_bullet(texto, f_c, max_w, draw)
+            current_lc = [l for _, l in current_lb]
         else:
-            lb = None
-            lc  = _quebrar_texto(texto,  f_c, max_w, draw)
+            current_lb = None
+            current_lc  = _quebrar_texto(texto,  f_c, max_w, draw)
         if _is_capa:
             h_t = (sum(_lh(draw, l, f_t) + _CAPA_BLK_PAD_V * 2 for l in lt)
                    + _CAPA_BLK_GAP * max(len(lt) - 1, 0))
         else:
             h_t = sum(_lh(draw, l, f_t) + 10 for l in lt)
-        h_c = sum(_lh(draw, l, f_c) + 7  for l in lc)
+        h_c = sum(_lh(draw, l, f_c) + 7  for l in current_lc)
         if h_t + SEP_H + h_c <= espaco:
             f_titulo, f_corpo = f_t, f_c
-            linhas_titulo, linhas_corpo = lt, lc
-            linhas_bullet_corpo = lb
+            linhas_titulo, linhas_corpo = lt, current_lc
+            linhas_bullet_corpo = current_lb
             h_titulo_total, h_corpo_total = h_t, h_c
             break
 
@@ -1192,12 +1210,13 @@ def compor_slide(titulo: str, texto: str, fundo_bytes: bytes | None,
         tam_t, tam_c = _CANDIDATOS[-1]
         f_titulo = _carregar_fonte(nome_fonte, tam_t, negrito=True)
         f_corpo  = _carregar_fonte(nome_fonte, tam_c, negrito=_is_capa)
-        linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w, draw)
+        linhas_titulo = _quebrar_texto(titulo, f_titulo, max_w, draw) 
         if _usar_bullets:
-            linhas_bullet_corpo = _linhas_bullet(texto, f_corpo, max_w, draw)
-            linhas_corpo = [l for _, l in linhas_bullet_corpo]
+            linhas_bullet_corpo = _linhas_bullet(texto, f_corpo, max_w, draw) 
+            linhas_corpo = [l for _, l in linhas_bullet_corpo] 
         else:
-            linhas_corpo  = _quebrar_texto(texto,  f_corpo,  max_w, draw)
+            linhas_bullet_corpo = [] # Garante que seja uma lista vazia se não usar bullets
+            linhas_corpo  = _quebrar_texto(texto,  f_corpo,  max_w, draw) 
         if _is_capa:
             h_titulo_total = (sum(_lh(draw, l, f_titulo) + _CAPA_BLK_PAD_V * 2 for l in linhas_titulo)
                               + _CAPA_BLK_GAP * max(len(linhas_titulo) - 1, 0))
@@ -1438,12 +1457,19 @@ def gerar_imagens_carrossel(
         prompt_imagem_raw = slide.get("prompt_imagem") or ""
         variante = _VARIANTES_SLIDES.get(n)
         print(f"[Imagens] Slide {n}/{total}: {slide['titulo']}" + (f" [variante {variante}]" if variante else ""))
-        if variante == "D3":
-            fundo_slide = None
-        elif variante == "D4":
-            fundo_slide = _gerar_fundo_d4(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
-        else:
-            fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+        
+        bg_cache = pasta / f"bg_{n:02d}.png"
+        fundo_slide = None
+        
+        if variante != "D3":
+            if variante == "D4":
+                fundo_slide = _gerar_fundo_d4(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+            else:
+                fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+            
+            if fundo_slide:
+                bg_cache.write_bytes(fundo_slide)
+                
         imagem = compor_slide(
             slide.get("titulo", ""), slide.get("texto", ""), fundo_slide, fonte,
             logo_path=logo_p, url_site=url_site,
@@ -1464,7 +1490,8 @@ def gerar_imagens_carrossel(
 def gerar_imagem_slide(slide: dict, empresa_id: str, stem: str,
                        identidade_visual: dict, is_ultimo: bool = False,
                        variante_override: str | None = None,
-                       logo_index: int = 1) -> Path:
+                       logo_index: int = 1,
+                       fundo_fixo: bool = False) -> Path:
     """Regenera a imagem de um único slide, sobrescrevendo o arquivo existente."""
     pasta = OUTPUTS_DIR / empresa_id / "imagens" / stem
     pasta.mkdir(parents=True, exist_ok=True)
@@ -1485,12 +1512,24 @@ def gerar_imagem_slide(slide: dict, empresa_id: str, stem: str,
 
     prompt_imagem_raw = slide.get("prompt_imagem") or ""
     print(f"[Imagens] Regenerando slide {n}: {slide['titulo']}" + (f" [variante {variante}]" if variante else ""))
-    if variante == "D3":
-        fundo_slide = None
-    elif variante == "D4":
-        fundo_slide = _gerar_fundo_d4(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
-    else:
-        fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+    
+    bg_cache = pasta / f"bg_{n:02d}.png"
+    fundo_slide = None
+    
+    if variante != "D3":
+        if fundo_fixo and bg_cache.exists():
+            fundo_slide = bg_cache.read_bytes()
+        else:
+            if variante == "D4":
+                fundo_slide = _gerar_fundo_d4(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+            else:
+                fundo_slide = _gerar_fundo(prompt_imagem_raw or slide.get("titulo", ""), estilo, cores)
+            
+            if fundo_slide:
+                bg_cache.write_bytes(fundo_slide)
+            elif bg_cache.exists():
+                fundo_slide = bg_cache.read_bytes()
+                
     imagem = compor_slide(
         slide.get("titulo", ""), slide.get("texto", ""), fundo_slide, fonte,
         logo_path=logo_p, url_site=url_site,
@@ -1982,7 +2021,7 @@ _TWEET_IMG_H           = 360   # altura da faixa de imagem horizontal (px)
 _TWEET_IMG_BORDER_R    = 5     # border-radius da imagem (px)
 
 
-def _desenhar_badge_verificado(
+def _desenhar_badge_verificado_fallback(
     draw: ImageDraw.ImageDraw,
     cx: int, cy: int, raio: int,
     cor_badge: tuple[int, int, int],
@@ -2152,8 +2191,8 @@ def compor_slide_tweet(
         canvas = base.convert("RGB")
         draw   = ImageDraw.Draw(canvas)
     else:
-        br = nome_h // 2
-        _desenhar_badge_verificado(draw, badge_x + br, badge_y + br, br, cor_primaria)
+        br = nome_h // 2 # Fallback to drawing a simple circle with checkmark
+        _desenhar_badge_verificado_fallback(draw, badge_x + br, badge_y + br, br, cor_primaria)
 
     # ── Seção 2: Título (bold) ─────────────────────────────────────────────────
     y = y_start + header_area_h + HEADER_GAP
@@ -2167,20 +2206,11 @@ def compor_slide_tweet(
     # ── Seção 3: Descrição (regular, com bullets se slides 2/4) ───────────────
     if linhas_bullet_corpo is not None:
         _last_indent = 0
-        for prefix, linha in linhas_bullet_corpo:
-            if prefix in ("✓", "✗"):
-                cor_prefix = (50, 200, 80) if prefix == "✓" else (210, 55, 55)
-                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40, y_offset=10)
-                if png_ok:
-                    _last_indent = 48
-                else:
-                    prefix_txt = _render_bullet_symbol(prefix) + " "
-                    draw.text((PAD, y), prefix_txt, font=f_corpo, fill=cor_prefix)
-                    _last_indent = int(draw.textlength(prefix_txt, font=f_corpo)) + 8
-                draw.text((PAD + _last_indent, y), linha, font=f_corpo, fill=COR_DESC)
+        for prefix, linha in linhas_bullet_corpo: # Now handles generic bullet •
+            if prefix in ("✓", "✗", "•"):
+                _last_indent = _render_bullet_and_text(canvas, draw, prefix, linha, f_corpo, COR_DESC, PAD, y)
             else:
-                # Continuação de bullet anterior: indenta sem símbolo
-                draw.text((PAD + _last_indent, y), linha, font=f_corpo, fill=COR_DESC)
+                draw.text((PAD + _last_indent, y), linha, font=f_corpo, fill=COR_DESC) # Continuação of bullet or regular line
             y += _lh(draw, linha, f_corpo) + LINHA_GAP
     else:
         for linha in linhas_corpo:
@@ -2290,10 +2320,13 @@ def gerar_imagens_carrossel_tweet(
         dest = pasta / f"slide_{n:02d}.png"
         print(f"[Tweet] Gerando slide {n} → {dest.name}")
 
+        bg_cache = pasta / f"bg_{n:02d}.png"
         fundo_bytes = None
         if n in _SLIDES_COM_IMAGEM_TWEET:
             print(f"[Tweet] Gerando imagem IA para slide {n}...")
             fundo_bytes = _gerar_fundo_tweet(slide, identidade_visual)
+            if fundo_bytes:
+                bg_cache.write_bytes(fundo_bytes)
 
         imagem = compor_slide_tweet(
             slide.get("titulo", ""), slide.get("texto", ""), empresa_nome, fonte,
@@ -2330,6 +2363,7 @@ def gerar_imagem_slide_tweet(
     identidade_visual: dict,
     logo_index: int = 1,
     cor_circulo_hex: str = "#1d9bf0",
+    fundo_fixo: bool = False,
 ) -> Path:
     """Regenera a imagem de um único slide do Carrossel Tweet."""
     pasta = OUTPUTS_DIR / empresa_id / "imagens_tweet" / stem
@@ -2346,10 +2380,18 @@ def gerar_imagem_slide_tweet(
     dest = pasta / f"slide_{n:02d}.png"
     print(f"[Tweet] Regenerando slide {n} → {dest.name}")
 
+    bg_cache = pasta / f"bg_{n:02d}.png"
     fundo_bytes = None
     if n in _SLIDES_COM_IMAGEM_TWEET:
-        print(f"[Tweet] Gerando imagem IA para slide {n}...")
-        fundo_bytes = _gerar_fundo_tweet(slide, identidade_visual)
+        if fundo_fixo and bg_cache.exists():
+            fundo_bytes = bg_cache.read_bytes()
+        else:
+            print(f"[Tweet] Gerando imagem IA para slide {n}...")
+            fundo_bytes = _gerar_fundo_tweet(slide, identidade_visual)
+            if fundo_bytes:
+                bg_cache.write_bytes(fundo_bytes)
+            elif bg_cache.exists():
+                fundo_bytes = bg_cache.read_bytes()
 
     imagem = compor_slide_tweet(
         slide.get("titulo", ""), slide.get("texto", ""), empresa_nome, fonte,
@@ -2391,7 +2433,7 @@ def compor_slide_misto_dd(
     cor_secundaria: tuple[int, int, int] = (80, 90, 100),
     imagem_bytes: bytes | None = None,
     slide_num: int = 1,
-) -> Image.Image:
+) -> Image.Image: # Added type hint for return
     """Compõe um slide do Carrossel Misto DD. Cada slide_num tem um layout distinto."""
 
     PAD             = 72
@@ -2400,6 +2442,8 @@ def compor_slide_misto_dd(
     CINZA_ESCURO    = (30, 30, 35)
     COR_TITULO_DARK = (15, 20, 30)
     COR_TEXTO_GRAY  = (80, 90, 100)
+
+
 
     def _logo(canvas: Image.Image, x: int, y: int, h: int) -> Image.Image:
         if not (logo_path and logo_path.exists()):
@@ -2532,11 +2576,11 @@ def compor_slide_misto_dd(
 
         f_titulo      = _carregar_fonte(nome_fonte, 90, negrito=True)
         linhas_titulo = None
-        titulo_gap    = -2
+        titulo_gap    = 0
         
-        for tam in [265, 245, 224, 204, 188, 171, 155, 139, 122, 110, 98, 92, 86, 78, 71, 65, 59, 53, 47, 41, 37, 33]:
+        # Busca granular para maximizar tamanho ocupando o maior espaço possível sem colar
+        for tam in range(260, 30, -4):
             f_t = _carregar_fonte(nome_fonte, tam, negrito=True)
-            t_gap = -int(tam * 0.10)  # Leading bem justo (1.0x) para maximizar o tamanho da fonte
             
             # Primeira passagem com width completo para estimar nº de linhas
             lt_est = _quebrar_texto(titulo_up, f_t, max_w_full, draw)
@@ -2559,9 +2603,19 @@ def compor_slide_misto_dd(
             if linha_atual:
                 lt.append(linha_atual)
             
-            h_t = sum(_lh(draw, l, f_t) + t_gap for l in lt)
-            if h_t <= MAX_H_PERMITIDO:
-                f_titulo, linhas_titulo, titulo_gap = f_t, lt, t_gap
+            # Altura base sem gap
+            h_base = sum(_lh(draw, l, f_t) for l in lt)
+            min_gap = int(tam * 0.08)
+            h_min_total = h_base + min_gap * len(lt)
+            
+            if h_min_total <= MAX_H_PERMITIDO:
+                espaco_extra = MAX_H_PERMITIDO - h_base
+                t_gap_ideal = espaco_extra // len(lt) if len(lt) > 0 else 0
+                t_gap = max(min_gap, min(t_gap_ideal, int(tam * 0.30)))
+                
+                f_titulo = f_t
+                linhas_titulo = lt
+                titulo_gap = t_gap
                 break
                 
         if linhas_titulo is None:
@@ -2621,16 +2675,29 @@ def compor_slide_misto_dd(
         # ── Card branco — posicionado acima da elipse ──────────────────────
         CARD_PAD   = 40
         CARD_MAX_W = int(SLIDE_W * 0.80)
-        f_corpo    = _carregar_fonte(nome_fonte, 34)
-        texto_limpo  = _strip_bullets(texto)
-        linhas_corpo = _quebrar_texto(texto_limpo, f_corpo, CARD_MAX_W - CARD_PAD * 2, draw)
+        
+        ELIPSE_TOP = elipse_cy - ELIPSE_H // 2
+        MAX_CARD_H = ELIPSE_TOP - 40
 
+        f_corpo    = _carregar_fonte(nome_fonte, 34)
+        linhas_bullet_corpo = []
+        for tam in [34, 30, 26, 22]:
+            f_candidata = _carregar_fonte(nome_fonte, tam)
+            lb_temp = _linhas_bullet(texto, f_candidata, CARD_MAX_W - CARD_PAD * 2, draw)
+            lc_temp = [l for _, l in lb_temp]
+            h_temp = sum(_lh(draw, l, f_candidata) + LINHA_GAP for l in lc_temp)
+            if h_temp <= MAX_CARD_H - CARD_PAD * 2:
+                f_corpo = f_candidata
+                linhas_bullet_corpo = lb_temp
+                break
+        if not linhas_bullet_corpo:
+            linhas_bullet_corpo = _linhas_bullet(texto, f_corpo, CARD_MAX_W - CARD_PAD * 2, draw)
+
+        linhas_corpo = [l for _, l in linhas_bullet_corpo]
         corpo_h = sum(_lh(draw, l, f_corpo) + LINHA_GAP for l in linhas_corpo)
         card_h  = corpo_h + CARD_PAD * 2
         card_w  = CARD_MAX_W
         card_x  = (SLIDE_W - card_w) // 2
-        # card começa acima da elipse com gap de 32px
-        ELIPSE_TOP = elipse_cy - ELIPSE_H // 2
         card_y  = ELIPSE_TOP - 32 - card_h
 
         base_card  = canvas.convert("RGBA")
@@ -2645,8 +2712,12 @@ def compor_slide_misto_dd(
 
         # Texto preto dentro do card
         ty = card_y + CARD_PAD
-        for linha in linhas_corpo:
-            draw.text((card_x + CARD_PAD, ty), linha, font=f_corpo, fill=(10, 10, 10))
+        _last_indent = 0
+        for prefix, linha in linhas_bullet_corpo:
+            if prefix in ("✓", "✗", "•"):
+                _last_indent = _render_bullet_and_text(canvas, draw, prefix, linha, f_corpo, (10, 10, 10), card_x + CARD_PAD, ty)
+            else:
+                draw.text((card_x + CARD_PAD + _last_indent, ty), linha, font=f_corpo, fill=(10, 10, 10))
             ty += _lh(draw, linha, f_corpo) + LINHA_GAP
 
         # ── Pill (rounded rectangle) horizontal com cor primária ─────────
@@ -2738,20 +2809,24 @@ def compor_slide_misto_dd(
             draw   = ImageDraw.Draw(canvas)
 
         # ── Texto dinâmico — tenta o maior tamanho que cabe na área ──────
-        AREA_TEXTO_H3 = img_y - PAD         # px disponíveis entre topo e imagem
+        AREA_TEXTO_H3 = img_y - PAD # px disponíveis entre topo e imagem
         max_w_txt     = SLIDE_W - PAD * 2
-        texto_limpo   = _strip_bullets(texto)
 
-        f_corpo = _carregar_fonte(nome_fonte, 44)
-        for tam in [72, 66, 60, 54, 48, 42, 38]:
+        f_corpo = _carregar_fonte(nome_fonte, 44) # Initial font size guess
+        linhas_bullet_corpo = []
+        for tam in [72, 66, 60, 54, 48, 42, 38, 34, 30, 26]: # Extended range
             f_t  = _carregar_fonte(nome_fonte, tam)
-            lins = _quebrar_texto(texto_limpo, f_t, max_w_txt, draw)
-            h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lins)
+            lb_temp = _linhas_bullet(texto, f_t, max_w_txt, draw)
+            lc_temp = [l for _, l in lb_temp]
+            h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lc_temp)
             if h_t <= AREA_TEXTO_H3 - PAD * 2:
-                f_corpo, linhas_corpo = f_t, lins
+                f_corpo = f_t
+                linhas_bullet_corpo = lb_temp
                 break
         else:
-            linhas_corpo = _quebrar_texto(texto_limpo, f_corpo, max_w_txt, draw)
+            linhas_bullet_corpo = _linhas_bullet(texto, f_corpo, max_w_txt, draw)
+
+        linhas_corpo = [l for _, l in linhas_bullet_corpo] # For height calculation
 
         corpo_h = sum(_lh(draw, l, f_corpo) + LINHA_GAP for l in linhas_corpo)
         gap_v   = max(PAD, (AREA_TEXTO_H3 - corpo_h) // 2)
@@ -2765,8 +2840,12 @@ def compor_slide_misto_dd(
         canvas = _base_ln.convert("RGB")
         draw   = ImageDraw.Draw(canvas)
 
-        for linha in linhas_corpo:
-            draw.text((PAD, y), linha, font=f_corpo, fill=BRANCO)
+        _last_indent = 0
+        for prefix, linha in linhas_bullet_corpo:
+            if prefix in ("✓", "✗", "•"):
+                _last_indent = _render_bullet_and_text(canvas, draw, prefix, linha, f_corpo, BRANCO, PAD, y)
+            else:
+                draw.text((PAD + _last_indent, y), linha, font=f_corpo, fill=BRANCO)
             y += _lh(draw, linha, f_corpo) + LINHA_GAP
 
         _line_layer2 = Image.new("RGBA", (SLIDE_W, SLIDE_H), (0, 0, 0, 0))
@@ -2776,6 +2855,7 @@ def compor_slide_misto_dd(
         canvas = _base_ln2.convert("RGB")
 
         return canvas
+
 
     # ── Slide 4: Imagem fundo + fade preto + texto grande posicionado embaixo ─
     elif slide_num == 4:
@@ -2820,8 +2900,8 @@ def compor_slide_misto_dd(
         # Renderiza bullets: continuações de linha não recebem símbolo nem dot
         _last_indent = 0   # indentação da linha de bullet atual
         for prefix, linha in linhas_bullet:
-            if prefix in ("✓", "✗"):
-                cor_p  = (100, 220, 120) if prefix == "✓" else (255, 100, 100)
+            if prefix in ("✓", "✗", "•"):
+                cor_p  = (100, 220, 120) if prefix == "✓" else (255, 100, 100) if prefix == "✗" else BRANCO
                 # Tenta desenhar asset PNG
                 png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD_LEFT, y, 36)
                 if png_ok:
@@ -2950,18 +3030,25 @@ def compor_slide_misto_dd(
         # ── Descrição — entre título e barcode ───────────────────────────
         DESC_MAX_H = bar_y - y - 32
         f_corpo    = _carregar_fonte(nome_fonte, 34)
+        linhas_bullet_corpo = []
         for tam in [34, 30, 26]:
             f_t  = _carregar_fonte(nome_fonte, tam)
-            lins = _quebrar_texto(_strip_bullets(texto), f_t, max_w_txt, draw)
-            h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lins)
+            lb_temp = _linhas_bullet(texto, f_t, max_w_txt, draw)
+            lc_temp = [l for _, l in lb_temp]
+            h_t  = sum(_lh(draw, l, f_t) + LINHA_GAP for l in lc_temp)
             if h_t <= DESC_MAX_H:
-                f_corpo, linhas_corpo = f_t, lins
+                f_corpo = f_t
+                linhas_bullet_corpo = lb_temp
                 break
         else:
-            linhas_corpo = _quebrar_texto(_strip_bullets(texto), f_corpo, max_w_txt, draw)
+            linhas_bullet_corpo = _linhas_bullet(texto, f_corpo, max_w_txt, draw)
 
-        for linha in linhas_corpo:
-            draw.text((CARD_X + INNER_PAD, y), linha, font=f_corpo, fill=COR_TEXTO_GRAY)
+        _last_indent = 0
+        for prefix, linha in linhas_bullet_corpo:
+            if prefix in ("✓", "✗", "•"):
+                _last_indent = _render_bullet_and_text(canvas, draw, prefix, linha, f_corpo, COR_TEXTO_GRAY, CARD_X + INNER_PAD, y)
+            else:
+                draw.text((CARD_X + INNER_PAD + _last_indent, y), linha, font=f_corpo, fill=COR_TEXTO_GRAY)
             y += _lh(draw, linha, f_corpo) + LINHA_GAP
 
         return canvas
@@ -3003,8 +3090,8 @@ def compor_slide_misto_dd(
         y += 22
 
         for prefix, linha in linhas_bullet:
-            if prefix in ("✓", "✗"):
-                cor_p = (120, 255, 140) if prefix == "✓" else (255, 100, 100)
+            if prefix in ("✓", "✗", "•"):
+                cor_p = (120, 255, 140) if prefix == "✓" else (255, 100, 100) if prefix == "✗" else BRANCO
                 # Tenta desenhar asset PNG
                 png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40)
                 if png_ok:
@@ -3198,9 +3285,14 @@ def compor_slide_misto_dd(
 
         # Descrição
         f_corpo = _carregar_fonte(nome_fonte, 30)
-        linhas_corpo = _quebrar_texto(texto, f_corpo, max_w_txt, draw)
-        for linha in linhas_corpo:
-            draw.text((CARD_X + INNER_PAD, y), linha, font=f_corpo, fill=COR_TEXTO_GRAY)
+        linhas_bullet_corpo = _linhas_bullet(texto, f_corpo, max_w_txt, draw)
+        
+        _last_indent = 0
+        for prefix, linha in linhas_bullet_corpo:
+            if prefix in ("✓", "✗", "•"):
+                _last_indent = _render_bullet_and_text(canvas, draw, prefix, linha, f_corpo, COR_TEXTO_GRAY, CARD_X + INNER_PAD, y)
+            else:
+                draw.text((CARD_X + INNER_PAD + _last_indent, y), linha, font=f_corpo, fill=COR_TEXTO_GRAY)
             y += _lh(draw, linha, f_corpo) + LINHA_GAP
 
         return canvas
@@ -3348,3 +3440,20 @@ def listar_imagens_misto_dd(empresa_id: str, stem: str) -> list[Path]:
     if not pasta.exists():
         return []
     return sorted(pasta.glob("slide_*.png"), key=lambda p: int(p.stem.split("_")[-1]))
+
+
+def imagens_para_pdf(image_paths: list[Path]) -> bytes:
+    """Converte uma lista de caminhos de imagens em um arquivo PDF (em memória)."""
+    if not image_paths:
+        return b""
+    
+    images = [Image.open(p).convert("RGB") for p in image_paths]
+    buf = BytesIO()
+    images[0].save(
+        buf,
+        format="PDF",
+        save_all=True,
+        append_images=images[1:],
+        resolution=100.0,
+    )
+    return buf.getvalue()

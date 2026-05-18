@@ -50,10 +50,7 @@
           "rgb": "255, 129, 104"
         }
       ],
-      "fontes": [
-        "Poppins",
-        "Poppins"
-      ]
+      "fontes": ["Poppins", "Poppins"]
     }
   },
   {
@@ -66,6 +63,8 @@
     "tom_de_voz": "Especialista que fala simples. A Nomos é séria e confiável, mas comunica como quem está do seu lado — não como regulador, mas como aliado estratégico.",
     "estilo_imagem": "1970s style. sepia almost black & white. Film super super hiper ultra double grained ultra noised style like a really old photo. Intense, single side light source creating long shadows. Low-angle perspective. The photo is blending into a news paper almost not visible. Medium sized Serifed half letters almost transparent appears in the margins.",
     "drive_folder_id": "13dKQSoQXcfPRsqUvRhT4gNSGY55kgdCx",
+    "webflow_api_token": "3ea1686e3236a3201099ab490d7a8242d0ce54c84a231e601f5ec6b6a96fc06b",
+    "webflow_collection_id": "65311e7b228a7b54fa461c46",
     "identidade_visual": {
       "primarias": [
         {
@@ -95,10 +94,7 @@
           "rgb": "32, 33, 34"
         }
       ],
-      "fontes": [
-        "Inria Serif",
-        "Inria Sans"
-      ]
+      "fontes": ["Inria Serif", "Inria Sans"]
     }
   },
   {
@@ -128,10 +124,7 @@
           "rgb": "0, 0, 0"
         }
       ],
-      "fontes": [
-        "Anton",
-        "AnkaCoder"
-      ]
+      "fontes": ["Anton", "AnkaCoder"]
     }
   }
 ]

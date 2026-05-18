@@ -133,6 +133,26 @@ ESTRUTURA DO ARTIGO:
 
 Responda APENAS com o texto do artigo em markdown, sem JSON, sem comentários."""
 
+PROMPT_CAPA_BLOG = """Você é um especialista em criação de prompts para geração de imagens de capa de blog.
+Seu objetivo é criar um prompt de imagem conciso e descritivo em inglês, baseado no conteúdo de um artigo de blog,
+que reflita o tema principal e o estilo visual da empresa.
+
+Considere o seguinte:
+- **Tema do Artigo:** "{tema}"
+- **Conteúdo do Artigo:** "{blog_content}"
+- **Estilo Visual da Empresa:** "{estilo_imagem}" (use este estilo como base, mas adapte-o ao tema do artigo)
+
+O prompt deve ser:
+- Em inglês.
+- Uma única frase, clara e objetiva.
+- Focado em elementos visuais concretos que representem o tema do artigo.
+- Incorporar o estilo visual da empresa de forma sutil, se aplicável.
+- Evitar texto, números ou elementos tipográficos na imagem.
+- Evitar conceitos abstratos que não possam ser visualizados.
+
+Gere APENAS o prompt da imagem, sem introduções ou explicações.
+"""
+
 
 # ─────────────────────────────────────────────
 # Extratores de texto bruto
@@ -322,8 +342,8 @@ _VALID_JSON_ESCAPES = frozenset('"\\/bfnrtu')
 
 def _sanitize_json_strings(raw: str) -> str:
     """Corrige problemas comuns em JSON gerado por LLM:
-    - Caracteres de controle literais (newline, tab, CR) dentro de strings
-    - Backslashes com sequências de escape inválidas (ex: \\s, \\p)
+    Caracteres de controle literais (newline, tab, CR) dentro de strings
+    Backslashes com sequências de escape inválidas (ex: \\s, \\p)
     """
     result = []
     in_string = False
@@ -398,6 +418,12 @@ def _extract_json_array(raw: str) -> str | None:
                 return raw[start:idx + 1]
     return None
 
+
+def _verificar_erro_faturamento(e: Exception):
+    """Verifica se o erro é de limite de gastos/cota e interrompe imediatamente."""
+    erro_str = str(e).lower()
+    if "429" in erro_str and "spending cap" in erro_str:
+        raise RuntimeError("💳 O limite de gastos mensal da API do Google Gemini foi atingido. Acesse https://ai.studio/spend para liberar mais créditos.")
 
 def _parse_json(raw: str) -> dict | list:
     raw = _strip_markdown_fence(raw)
@@ -508,6 +534,7 @@ def gerar_conteudo(
                     config=config,
                 )
             except Exception as e:
+                _verificar_erro_faturamento(e)
                 print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
                 response = client.models.generate_content(
                     model="gemini-2.5-flash",
@@ -528,6 +555,7 @@ def gerar_conteudo(
             salvar_historico(empresa_id, tema, conteudo.get("carrossel", []))
             return conteudo
         except Exception as e:
+            _verificar_erro_faturamento(e)
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
 
     raise RuntimeError("Falha ao gerar conteúdo após 3 tentativas. Tente novamente.")
@@ -848,6 +876,33 @@ def gerar_blog(
     return _text.strip()
 
 
+def gerar_prompt_capa_blog(
+    tema: str,
+    blog_content: str,
+    empresa_id: str,
+    empresa_nome: str,
+    estilo_imagem: str,
+) -> str:
+    """Gera um prompt de imagem de capa para um post de blog."""
+    client = _get_client()
+    prompt = PROMPT_CAPA_BLOG.format(
+        tema=tema,
+        blog_content=blog_content[:4000],  # Limita o tamanho do conteúdo para não estourar o prompt
+        estilo_imagem=estilo_imagem,
+    )
+    print(f"[LLM] Gerando prompt de capa de blog para: '{tema}' ({empresa_nome})")
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+
+    _text = _get_response_text(response)
+    if not _text:
+        raise ValueError("Não foi possível gerar o prompt de capa do blog.")
+
+    return _strip_markdown_fence(_text).strip()
+
 # ─────────────────────────────────────────────
 # Carrossel Tweet
 # ─────────────────────────────────────────────
@@ -932,6 +987,7 @@ def gerar_carrossel_tweet(
                     model="gemini-2.5-flash", contents=prompt, config=config
                 )
             except Exception as e:
+                _verificar_erro_faturamento(e)
                 print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
                 response = client.models.generate_content(
                     model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING
@@ -948,6 +1004,7 @@ def gerar_carrossel_tweet(
                 return {"slides": slides, "legenda": conteudo.get("legenda", "")}
             raise ValueError("JSON retornado sem campo 'carrossel'")
         except Exception as e:
+            _verificar_erro_faturamento(e)
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
 
     raise RuntimeError("Falha ao gerar Carrossel Tweet após 3 tentativas.")
@@ -958,7 +1015,7 @@ def gerar_carrossel_tweet(
 # ─────────────────────────────────────────────
 
 ESTRUTURA_CARROSSEL_MISTO_DD = """
-Slide 1 — Capa/Gancho: APENAS título (máx 18 palavras, gancho imediato e impactante). NÃO pule este slide! O campo "texto" deve receber EXATAMENTE uma string vazia "". prompt_imagem: cena física de negócios/logística sem texto.
+Slide 1 — Capa/Gancho: OBRIGATÓRIO! APENAS título (máx 18 palavras, gancho imediato e impactante). O campo "texto" deve ser curto ou vazio (ex: ""). prompt_imagem: cena física de negócios/logística sem texto.
 Slide 2 — Contexto: apresente o problema de forma conceitual. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM dados ou números, foco no conceito e na realidade do problema). prompt_imagem: cena contextual relacionada ao problema.
 Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, foco na ideia central sem dados). prompt_imagem: cena que ilustre a causa.
 Slide 4 — Impactos: liste 3 a 5 consequências operacionais conceituais usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). SEM números, percentuais ou fontes — apenas os conceitos e impactos. prompt_imagem: cena de ambiente impactado negativamente.
@@ -981,7 +1038,7 @@ Gere um Carrossel Misto DD de 8 slides sobre o tema "{tema}":
 
 Cada slide deve ter:
 - "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 18 palavras; slides 5 e 8 devem ter máx 6 palavras)
-- "texto": corpo do slide conforme a instrução. No Slide 1 OBRIGATORIAMENTE deve ser "". Nos demais, seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante; NÃO use dados numéricos, percentuais, estatísticas ou citações de fontes — foque apenas nos conceitos e ideias
+- "texto": corpo do slide conforme a instrução. No Slide 1 pode ser curto ou "". Nos demais, seja direto e objetivo, máx 2-3 frases curtas; evite introduções, conectivos desnecessários e contexto redundante; NÃO use dados numéricos, percentuais, estatísticas ou citações de fontes — foque apenas nos conceitos e ideias
 - "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cenas visualmente distintas entre slides; (b) cenas físicas concretas com pessoas, objetos ou ambientes reais; (c) ABSOLUTAMENTE PROIBIDO: qualquer texto, letras, números, letreiros, telas com escrita ou elementos tipográficos; (d) deixe vazio ("") no slide 5.
 
 Gere também uma legenda para acompanhar o carrossel na publicação:
@@ -1037,6 +1094,7 @@ def gerar_carrossel_misto_dd(
                     config=config,
                 )
             except Exception as e:
+                _verificar_erro_faturamento(e)
                 print(f"[LLM] Grounding indisponível ({e}), gerando sem busca...")
                 response = client.models.generate_content(
                     model="gemini-2.5-flash",
@@ -1054,6 +1112,7 @@ def gerar_carrossel_misto_dd(
                 return {"slides": slides, "legenda": conteudo.get("legenda", "")}
             raise ValueError("JSON retornado sem campo 'slides'")
         except Exception as e:
+            _verificar_erro_faturamento(e)
             print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
 
     raise RuntimeError("Falha ao gerar Carrossel Misto DD após 3 tentativas.")
@@ -1124,13 +1183,16 @@ def gerar_carrossel_oldschool(
     config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())], thinking_config=types.ThinkingConfig(thinking_budget=0))
     for tentativa in range(3):
         try:
-            try: response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
-            except Exception: response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING)
+            try: 
+                response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+            except Exception as e: 
+                _verificar_erro_faturamento(e)
+                response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING)
             _text = _get_response_text(response)
             if not _text: response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt + AVISO_SEM_GROUNDING); _text = _get_response_text(response)
             conteudo = _parse_json(_text)
             slides = conteudo.get("slides", [])
             if slides: return {"slides": slides, "legenda": conteudo.get("legenda", "")}
             raise ValueError("JSON sem 'slides'")
-        except Exception as e: print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
+        except Exception as e: _verificar_erro_faturamento(e); print(f"[LLM] Tentativa {tentativa + 1}/3 falhou ({e}). Retentando...")
     raise RuntimeError("Falha ao gerar Carrossel OldSchool após 3 tentativas.")
