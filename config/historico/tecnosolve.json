@@ -1,20 +1,5 @@
 [
   {
-    "data": "2026-04-06",
-    "tema": "https://veja.abril.com.br/coluna/radar-economico/transacoes-por-cartao-aumentam-18-em-dois-anos-no-brasil-diz-nuclea/",
-    "dados_usados": [
-      "[Slide 1] Pagamentos Digitais: Novo Desafio — O volume de transações por cartão no Brasil cresceu 18% em dois anos, impulsionando a necessidade de infraestrutura de TI robusta.",
-      "[Slide 2] Sintomas da Ineficiência Digital — ✓ Latência na detecção e prevenção de fraudes; ✓ Inconsistência de dados entre vendas e pagamentos; ✓ Altos custos com conciliação manual de transações; ✓ Interrupções frequentes em sistemas de pagamento.",
-      "[Slide 3] A Raiz da Inflexibilidade — A fragmentação de sistemas de pagamento e gestão de vendas, com bases de dados isoladas, impede visibilidade e agilidade em tempo real nas transações, comprometendo a segurança e a eficiência.",
-      "[Slide 4] Impactos Diretos nos Resultados — ✗ Perdas anuais de $44.4 bilhões no varejo e hospitalidade nos EUA por interrupções em pagamentos. ✗ Aumento de até 15% nos custos operacionais devido à fragmentação de sistemas. ✗ Consumidores esperam apenas sete minutos antes de abandonar uma compra online em caso de falha de pagamento.",
-      "[Slide 5] Abordagens Paliativas Não Resolvem — Soluções pontuais de segurança sem integração ao CRM ou otimizações isoladas de gateways de pagamento falham em abordar a complexidade do ecossistema de dados de ponta a ponta.",
-      "[Slide 6] Varejista Otimizou Prevenção de Fraudes — Uma grande varejista omnichannel reduziu em mais de 40% as falsas recusas e aumentou a receita em quase 1% com decisão antifraude em tempo real por IA.",
-      "[Slide 7] Arquitetura de Eventos: A Base — O sucesso reside na orquestração de microsserviços e na integração contínua de dados transacionais com modelos preditivos para análise de risco e conciliação em tempo real.",
-      "[Slide 8] Resiliência em Pagamentos — Um grande varejista indiano: Alcançou 99% de automação na conciliação de pagamentos, reduzindo o tempo manual em 85% e o ciclo de relatórios em 60% com solução integrada.\n---\nMarks & Spencer: Automatizou a conciliação financeira de mais de 20.000 entradas semanais, ganhando transparência por loja.",
-      "[Slide 9] O que Considerar? — Avalie a capacidade de orquestração de dados em tempo real, a flexibilidade para integrar sistemas legados e soluções de ponta, e a expertise em governança de segurança para pagamentos digitais."
-    ]
-  },
-  {
     "data": "2026-04-07",
     "tema": "O Brasil já usa a melhor tecnologia de pricing atual?",
     "dados_usados": [
@@ -297,6 +282,21 @@
       "[Slide 7] Arquitetura da Governança Orçamentária — Plataformas de gestão de verbas, integradas a sistemas de ERP e BI, orquestram o fluxo de dados em um ecossistema coerente. Isso permite a apuração automatizada e o monitoramento contínuo, transformando dados brutos em inteligência acionável.",
       "[Slide 8] Líderes Otimizam vs. Deixam Escapar — Líderes visionários adotam a automação para controlar verbas e maximizar retornos, transformando a complexidade em vantagem competitiva.\n---\nOutros resistem à mudança, perpetuando perdas e estagnando diante da concorrência, perdendo oportunidades de crescimento.",
       "[Slide 9] Fatores-Chave para o Sucesso — Priorize soluções que suportem a escala da sua operação e garantam interoperabilidade com sistemas existentes. Considere a flexibilidade para integrar novas fontes de dados e tecnologias, assegurando governança e segurança."
+    ]
+  },
+  {
+    "data": "2026-05-20",
+    "tema": "ruptura na gondola é um erro humano?",
+    "dados_usados": [
+      "[Slide 1] Ruptura na Gôndola: Erro Humano? — Afinal, quem é o verdadeiro culpado pela prateleira vazia no varejo? O problema é mais profundo.",
+      "[Slide 2] Sintomas de uma Falha Crítica — A prateleira vazia é apenas a ponta do iceberg, revelando desafios operacionais complexos no varejo.",
+      "[Slide 3] A Raiz da Ineficiência — A desconexão entre sistemas e a latência da informação são os verdadeiros catalisadores da ruptura na gôndola. Decisões dependem de dados que não chegam a tempo.",
+      "[Slide 4] Impactos Diretos no Negócio — As consequências da ruptura na gôndola reverberam na experiência do cliente e na saúde financeira do varejo.",
+      "[Slide 5] Soluções Superficiais Persistem — Ajustes manuais de estoque ou auditorias pontuais não endereçam a causa raiz da ruptura. O problema se repete em um ciclo vicioso.",
+      "[Slide 6] Visibilidade Total, Decisão Certa — A chave é orquestrar dados em tempo real, transformando a complexidade da cadeia de suprimentos em um fluxo contínuo de inteligência acionável.",
+      "[Slide 7] Tecnologia como Conexão — Plataformas de integração de dados e arquiteturas orientadas a eventos conectam o fluxo de informações do estoque à gôndola, garantindo agilidade e precisão.",
+      "[Slide 8] Quem Otimiza vs. Quem Perde — Líderes integram sistemas para uma cadeia de suprimentos fluida e rentável.---Outros mantêm silos, perdendo vendas e clientes por ineficiência.",
+      "[Slide 9] A Escolha Estratégica — Avalie soluções que se adaptem à complexidade do seu ecossistema, garantindo integração com legados e escalabilidade para o futuro."
     ]
   }
 ]
