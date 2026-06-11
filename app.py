@@ -46,16 +46,21 @@ _OPCOES_ESTILO_SLIDE = {
 # ─────────────────────────────────────────────
 
 def carregar_empresas() -> list[dict]:
-    if not CONFIG_PATH.exists():
-        return []
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+    from modulos.db import listar_empresas
+    empresas_db = listar_empresas()
+    if empresas_db:
+        return empresas_db
+    # fallback: arquivo local para compatibilidade pré-migração
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
 
 def salvar_empresas(empresas: list[dict]):
-    CONFIG_PATH.parent.mkdir(exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(empresas, f, ensure_ascii=False, indent=2)
+    from modulos.db import salvar_empresa
+    for emp in empresas:
+        salvar_empresa(emp)
 
 
 def pasta_arquivos(empresa_id: str) -> Path:
@@ -1626,8 +1631,9 @@ elif st.session_state.view == "empresas":
                     st.rerun()
 
                 if excluir:
+                    from modulos.db import deletar_empresa
+                    deletar_empresa(emp["id"])
                     empresas.pop(i)
-                    salvar_empresas(empresas)
                     st.success("Empresa removida.")
                     st.rerun()
 
