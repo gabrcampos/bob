@@ -4,6 +4,8 @@ Camada de acesso ao MongoDB (banco: bob_content).
 Coleções:
   - conteudos   : peças de conteúdo geradas (slides, textos, status)
   - agenda      : agendamentos por plataforma
+  - empresas    : cadastro de clientes (migrado de config/empresas.json)
+  - historico   : temas gerados por empresa (migrado de config/historico/*.json)
 """
 
 import os
@@ -38,6 +40,14 @@ def col_conteudos():
 
 def col_agenda():
     return _db()["agenda"]
+
+
+def col_empresas():
+    return _db()["empresas"]
+
+
+def col_historico():
+    return _db()["historico"]
 
 
 # ─────────────────────────────────────────────
@@ -282,3 +292,88 @@ def agenda_da_semana(empresa_id: str | None = None) -> list[dict]:
         filtro["empresa_id"] = empresa_id
     docs = col_agenda().find(filtro).sort("data_hora", 1)
     return [_doc_para_dict(d) for d in docs]
+
+
+# ─────────────────────────────────────────────
+# EMPRESAS
+# ─────────────────────────────────────────────
+
+def listar_empresas() -> list[dict]:
+    """Retorna todas as empresas cadastradas."""
+    return [_doc_para_dict(d) for d in col_empresas().find().sort("nome", 1)]
+
+
+def buscar_empresa(empresa_id: str) -> dict | None:
+    doc = col_empresas().find_one({"id": empresa_id})
+    return _doc_para_dict(doc) if doc else None
+
+
+def salvar_empresa(empresa: dict):
+    """Upsert de empresa pelo campo 'id'."""
+    empresa_id = empresa["id"]
+    col_empresas().update_one(
+        {"id": empresa_id},
+        {"$set": empresa},
+        upsert=True,
+    )
+
+
+def atualizar_empresa(empresa_id: str, campos: dict):
+    col_empresas().update_one({"id": empresa_id}, {"$set": campos})
+
+
+def deletar_empresa(empresa_id: str):
+    col_empresas().delete_one({"id": empresa_id})
+
+
+def salvar_contexto_empresa(empresa_id: str, contexto: str):
+    col_empresas().update_one(
+        {"id": empresa_id},
+        {"$set": {"contexto_compilado": contexto}},
+        upsert=True,
+    )
+
+
+def carregar_contexto_empresa(empresa_id: str) -> str:
+    doc = col_empresas().find_one({"id": empresa_id}, {"contexto_compilado": 1})
+    if doc:
+        return doc.get("contexto_compilado", "")
+    return ""
+
+
+# ─────────────────────────────────────────────
+# HISTÓRICO DE TEMAS
+# ─────────────────────────────────────────────
+
+def salvar_entrada_historico(empresa_id: str, tema: str, dados_usados: list[str]):
+    """Insere uma entrada de histórico. Mantém as últimas 20 por empresa."""
+    col_historico().insert_one({
+        "empresa_id": empresa_id,
+        "data": datetime.utcnow().strftime("%Y-%m-%d"),
+        "tema": tema,
+        "dados_usados": dados_usados,
+        "criado_em": _agora(),
+    })
+    # Garante no máximo 20 entradas por empresa — remove as mais antigas se necessário
+    total = col_historico().count_documents({"empresa_id": empresa_id})
+    if total > 20:
+        mais_antigos = (
+            col_historico()
+            .find({"empresa_id": empresa_id})
+            .sort("criado_em", 1)
+            .limit(total - 20)
+        )
+        ids_remover = [d["_id"] for d in mais_antigos]
+        col_historico().delete_many({"_id": {"$in": ids_remover}})
+
+
+def listar_historico(empresa_id: str, limit: int = 5) -> list[dict]:
+    """Retorna as últimas `limit` entradas de histórico de uma empresa."""
+    docs = (
+        col_historico()
+        .find({"empresa_id": empresa_id})
+        .sort("criado_em", -1)
+        .limit(limit)
+    )
+    # Retorna em ordem cronológica (mais antigas primeiro) para o prompt
+    return list(reversed([_doc_para_dict(d) for d in docs]))

@@ -1,8 +1,66 @@
 import re
+import subprocess
 from pathlib import Path
 from PIL import Image
 
 from modulos import gerador_imagens
+
+# ffmpeg empacotado pelo Remotion (fallback quando não está no PATH)
+_FFMPEG_REMOTION = Path("remotion_project/node_modules/@remotion/compositor-win32-x64-msvc/ffmpeg.exe")
+
+
+def _ffmpeg_bin() -> str:
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+        return "ffmpeg"
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass
+    if _FFMPEG_REMOTION.exists():
+        return str(_FFMPEG_REMOTION)
+    raise RuntimeError("ffmpeg não encontrado. Instale ffmpeg ou verifique o projeto Remotion.")
+
+
+def extrair_audio_instagram(url: str, output_path: Path) -> Path:
+    """
+    Baixa um vídeo do Instagram via yt-dlp e extrai o áudio como MP3.
+    Retorna o caminho do arquivo MP3 gerado.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    ffmpeg = _ffmpeg_bin()
+
+    # Baixa apenas o áudio direto, sem precisar de passo intermediário
+    temp_video = output_path.with_suffix(".tmp_video")
+
+    print(f"[Mídia] Baixando vídeo do Instagram: {url}")
+    subprocess.run(
+        [
+            "yt-dlp",
+            "--no-playlist",
+            "-o", str(temp_video),
+            url,
+        ],
+        check=True,
+    )
+
+    # Descobre a extensão real baixada (yt-dlp pode adicionar extensão ao nome)
+    candidatos = list(temp_video.parent.glob(temp_video.stem + "*"))
+    if not candidatos:
+        raise FileNotFoundError(f"yt-dlp não gerou arquivo em {temp_video.parent}")
+    arquivo_baixado = candidatos[0]
+
+    print(f"[Mídia] Extraindo áudio para: {output_path}")
+    subprocess.run(
+        [ffmpeg, "-y", "-i", str(arquivo_baixado), "-vn",
+         "-acodec", "libmp3lame", "-q:a", "2", str(output_path)],
+        check=True,
+    )
+
+    arquivo_baixado.unlink(missing_ok=True)
+
+    print(f"[Mídia] Áudio extraído com sucesso: {output_path}")
+    return output_path
 # Aqui você importaria o seu llm_brain para gerar os prompts
 # from modulos import llm_brain
 

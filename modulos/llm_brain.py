@@ -1,7 +1,6 @@
 import os
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 from html.parser import HTMLParser
 
@@ -9,19 +8,19 @@ import requests
 from google import genai
 from google.genai import types
 
-CONTEXTOS_DIR  = Path("config/contextos")
-HISTORICO_DIR  = Path("config/historico")
+CONTEXTOS_DIR  = Path("config/contextos")  # mantido como fallback de leitura
+HISTORICO_DIR  = Path("config/historico")  # mantido como fallback de leitura
 
 ESTRUTURA_CARROSSEL = """
-Slide 1 — Gancho/Capa: O TÍTULO deve ser uma frase de no máximo 6 palavras — gancho forte, provocador, que gere curiosidade. O TEXTO deve ser uma frase curta e impactante (máx 15 palavras) que amplifique o gancho do título. SEM dados, SEM estatísticas, SEM fontes — apenas conceito e impacto.
-Slide 2 — O Problema: liste 3 a 5 sintomas/problemas diretos usando EXATAMENTE o formato de bullet - (um por linha, iniciando com o caractere - seguido de espaço e o texto). Cada item conceitual, sem dados ou percentuais, máx 12 palavras.
-Slide 3 — Causa Raiz: por que o problema persiste? Título curto + texto conceitual (1-2 frases, SEM dados, SEM cases, texto corrido simples).
-Slide 4 — Impactos: liste 3 a 5 consequências operacionais/financeiras usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Itens conceituais, sem números ou percentuais, máx 12 palavras cada.
-Slide 5 — O que NÃO resolve: abordagens paliativas comuns e por que continuam falhando. Texto conceitual, sem dados.
-Slide 6 — Insight central: o princípio ou mudança de perspectiva que faz a diferença. Título assertivo + texto conceitual (1-2 frases). prompt_imagem deve ser "" (este slide não usa imagem).
-Slide 7 — O que está por trás: categoria de solução e princípio que explica o resultado — sem receita, sem produto específico. Texto conceitual.
-Slide 8 — Quem resolve vs. quem não resolve: slide split com dois painéis lado a lado. Painel ESQUERDO = lado bom (azul), painel DIREITO = lado ruim (escuro). Título assertivo (máx 6 palavras) que resume o contraste. O campo "texto" deve ter EXATAMENTE este formato: "[descrição de quem resolve — 1 frase, estado positivo]\n---\n[descrição de quem não resolve — 1 frase, estado problemático]". SEM dados. O campo "prompt_imagem" deve ter EXATAMENTE este formato: "[cena do painel esquerdo — ambiente moderno, organizado e produtivo]\n---\n[cena do painel direito — ambiente desorganizado, caótico ou degradado]". As duas cenas devem ser visivelmente diferentes entre si.
-Slide 9 — O que considerar: fatores-chave para avaliar qual caminho faz sentido para o contexto de cada empresa. Texto conceitual.
+Slide 1 — Gancho/Capa: O TÍTULO deve ser uma afirmação contundente de no máximo 6 palavras — específica ao tema, provocadora para o público-alvo. PROIBIDO perguntas genéricas do tipo "X ou Y?". O TEXTO deve ser uma única frase direta (máx 12 palavras) que explicite a consequência ou o custo de ignorar o tema — algo que faça o leitor pensar "isso é sobre mim". SEM dados, SEM estatísticas, SEM fontes.
+Slide 2 — O Problema: liste 3 a 5 sintomas/problemas ESPECÍFICOS ao tema central usando EXATAMENTE o formato de bullet - (um por linha, iniciando com o caractere - seguido de espaço e o texto). Cada item conceitual, sem dados, máx 12 palavras. PROIBIDO: problemas genéricos aplicáveis a qualquer assunto de TI.
+Slide 3 — Causa Raiz: nomeie o trade-off ou a contradição técnica/operacional específica deste tema que impede a decisão certa. Título curto (2-4 palavras, assertivo) + texto corrido de 1-2 frases que explique por que esse dilema particular existe — qual a tensão entre as duas forças em jogo neste tema. Exemplo do raciocínio esperado: se o tema é "cloud vs on-premise", a causa raiz não é "falta de visão" — é a tensão real entre controle/previsibilidade e escalabilidade/velocidade. PROIBIDO: qualquer variação de "falta de visão estratégica", "ausência de planejamento", "decisões reativas" ou causas genéricas que caberiam em qualquer assunto de TI.
+Slide 4 — Impactos: liste 3 a 5 consequências diretas do problema usando EXATAMENTE o formato de bullet ✗ (um por linha, iniciando com o caractere ✗ seguido de espaço e o texto). Itens conceituais, sem números, máx 12 palavras cada. Os impactos devem ser consequências específicas do tema, não de "má gestão" em geral.
+Slide 5 — O que NÃO resolve: 2 abordagens paliativas que as empresas tentam neste tema específico e por que continuam falhando. Texto corrido, 2 frases, sem lista.
+Slide 6 — Insight central: o princípio ou virada de perspectiva que muda o jogo neste tema. Título assertivo (máx 5 palavras) + texto conceitual (1-2 frases diretas). prompt_imagem deve ser "" (este slide não usa imagem).
+Slide 7 — O que funciona: princípio ou abordagem que explica por que algumas empresas resolvem este problema e outras não — específico ao tema central. Texto conceitual, 1-2 frases.
+Slide 8 — Quem resolve vs. quem não resolve: slide split. Título assertivo (máx 6 palavras) que resume o contraste neste tema. O campo "texto" deve ter EXATAMENTE este formato: "[estado de quem resolve — 1 frase positiva, específica ao tema]\n---\n[estado de quem não resolve — 1 frase problemática, específica ao tema]". O campo "prompt_imagem" deve ter EXATAMENTE este formato: "[cena do painel esquerdo — ambiente moderno, organizado e produtivo]\n---\n[cena do painel direito — ambiente desorganizado, caótico ou degradado]". As duas cenas devem ser visivelmente diferentes entre si.
+Slide 9 — CTA: EXATAMENTE 2 frases — nem mais, nem menos. Frase 1: síntese do argumento central (máx 15 palavras). Frase 2: convite à reflexão ou ação do leitor (máx 12 palavras). Total: máx 27 palavras. Sem produto, sem empresa, sem preenchimento.
 """
 
 PROMPT_COMPILAR_CONTEXTO = """Você é um estrategista de conteúdo B2B. Analise as informações brutas abaixo sobre a empresa "{empresa}" e compile um perfil editorial conciso que será usado para orientar a produção de conteúdo.
@@ -71,11 +70,13 @@ Gere 3 peças de conteúdo sobre o tema "{tema}":
 
 1. CARROSSEL (9 slides obrigatórios):
 {estrutura}
-REGRA CENTRAL: Apenas o slide 1 pode conter dados, estatísticas ou referências a casos reais — com fonte obrigatória. Todos os demais slides (2 a 9) devem ser 100% conceituais: sem números, sem percentuais, sem nomes de empresas como case, sem fontes. O valor está no raciocínio, não nos dados.
+COERÊNCIA NARRATIVA OBRIGATÓRIA: O tema "{tema}" é o fio condutor de todos os 9 slides. Cada slide deve tratar especificamente desse tema — nunca derive para temas adjacentes ou genéricos. Se o tema é uma questão ou dilema, todos os slides devem responder essa questão de ângulos diferentes, não abandoná-la.
+
+REGRA CENTRAL: Todos os slides (1 a 9) devem ser 100% conceituais: sem números, sem percentuais, sem nomes de empresas como case, sem fontes. O valor está no raciocínio, não nos dados.
 
 Cada slide deve ter:
 - "titulo": título curto e impactante (máx 8 palavras; slide 1 deve ter máx 6 palavras — gancho direto)
-- "texto": corpo do slide (máx 2 frases curtas e diretas, sem bullets, sem rodeios — direto ao argumento)
+- "texto": corpo do slide conforme a instrução de cada slide na estrutura acima. ATENÇÃO: slides 2 e 4 exigem bullets — respeite o formato especificado (- e ✗). Demais slides: máx 2 frases diretas, sem bullets, sem rodeios.
 - "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo deste slide (1-2 frases). EXCEÇÕES DE FORMATO: slide 6 deve ter prompt_imagem="" (sem imagem); slide 8 deve ter EXATAMENTE dois prompts separados por "\n---\n" (um para cada painel). REGRAS OBRIGATÓRIAS para todos os prompts: (a) cada slide deve ter uma cena visualmente distinta dos demais — varie ambientes, perspectivas, elementos e iluminação; (b) seja específico e concreto: descreva uma cena real com pessoas, objetos ou ambientes físicos — nunca conceitos abstratos (ex: "aerial view of a busy port logistics yard at dusk, stacked shipping containers", não "abstract technology concept"); (c) ABSOLUTAMENTE PROIBIDO: qualquer referência a texto, letras, palavras, números, letreiros, sinalização, telas com escrita, quadros brancos, apresentações, setas com labels, diagramas com texto, gráficos com labels ou qualquer elemento tipográfico — a cena deve ter APENAS elementos visuais puros sem escrita; (d) evite descrever setas, diagramas ou infográficos que naturalmente contenham texto; (e) prefira cenas do mundo físico: pessoas em ação, ambientes corporativos/industriais, paisagens urbanas, equipamentos, reuniões sem foco em telas.
 
 2. POST LINKEDIN (mín 4 parágrafos, máx 3.000 caracteres):
@@ -245,6 +246,11 @@ def caminho_contexto(empresa_id: str) -> Path:
 
 
 def carregar_contexto_compilado(empresa_id: str) -> str:
+    from modulos.db import carregar_contexto_empresa
+    texto = carregar_contexto_empresa(empresa_id)
+    if texto:
+        return texto
+    # fallback: arquivo local (compatibilidade com dados pré-migração)
     path = caminho_contexto(empresa_id)
     if path.exists():
         return path.read_text(encoding="utf-8")
@@ -252,6 +258,9 @@ def carregar_contexto_compilado(empresa_id: str) -> str:
 
 
 def salvar_contexto_compilado(empresa_id: str, texto: str):
+    from modulos.db import salvar_contexto_empresa
+    salvar_contexto_empresa(empresa_id, texto)
+    # mantém cópia local como backup
     CONTEXTOS_DIR.mkdir(parents=True, exist_ok=True)
     caminho_contexto(empresa_id).write_text(texto, encoding="utf-8")
 
@@ -266,29 +275,24 @@ def _caminho_historico(empresa_id: str) -> Path:
 
 def salvar_historico(empresa_id: str, tema: str, carrossel: list[dict]):
     """Persiste um resumo do carrossel gerado para evitar repetição de dados."""
-    HISTORICO_DIR.mkdir(parents=True, exist_ok=True)
-    path = _caminho_historico(empresa_id)
-    historico = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-    entrada = {
-        "data": datetime.now().strftime("%Y-%m-%d"),
-        "tema": tema,
-        "dados_usados": [
-            f"[Slide {s.get('slide', i+1)}] {s.get('titulo', '')} — {s.get('texto', '')}"
-            for i, s in enumerate(carrossel)
-        ],
-    }
-    historico.append(entrada)
-    # Mantém apenas as últimas 20 entradas
-    path.write_text(json.dumps(historico[-20:], ensure_ascii=False, indent=2), encoding="utf-8")
+    from modulos.db import salvar_entrada_historico
+    dados_usados = [
+        f"[Slide {s.get('slide', i+1)}] {s.get('titulo', '')} — {s.get('texto', '')}"
+        for i, s in enumerate(carrossel)
+    ]
+    salvar_entrada_historico(empresa_id, tema, dados_usados)
 
 
 def _bloco_historico(empresa_id: str, limit: int = 5) -> str:
     """Retorna bloco de prompt com histórico recente de conteúdos."""
-    path = _caminho_historico(empresa_id)
-    if not path.exists():
-        return ""
-    historico = json.loads(path.read_text(encoding="utf-8"))
-    recentes = historico[-limit:]
+    from modulos.db import listar_historico
+    recentes = listar_historico(empresa_id, limit=limit)
+    # fallback: arquivo local se o banco estiver vazio
+    if not recentes:
+        path = _caminho_historico(empresa_id)
+        if path.exists():
+            historico = json.loads(path.read_text(encoding="utf-8"))
+            recentes = historico[-limit:]
     if not recentes:
         return ""
     linhas = [
@@ -1017,21 +1021,20 @@ def gerar_carrossel_tweet(
 ESTRUTURA_CARROSSEL_MISTO_DD = """
 Slide 1 — Capa/Gancho: OBRIGATÓRIO! APENAS título (máx 18 palavras, gancho imediato e impactante). O campo "texto" deve ser curto ou vazio (ex: ""). prompt_imagem: cena física de negócios/logística sem texto.
 Slide 2 — Contexto: apresente o problema de forma conceitual. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM dados ou números, foco no conceito e na realidade do problema). prompt_imagem: cena contextual relacionada ao problema.
-Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, foco na ideia central sem dados). prompt_imagem: cena que ilustre a causa.
+Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, foco na ideia central sem dados). prompt_imagem: cena física concreta que ilustre a causa — OBRIGATÓRIO: pessoas ou objetos físicos reais, ABSOLUTAMENTE PROIBIDO qualquer tela, monitor, tablet, smartphone, interface digital, dashboard, mapa ou elemento com texto/UI visível.
 Slide 4 — Impactos: liste 3 a 5 consequências operacionais conceituais usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). SEM números, percentuais ou fontes — apenas os conceitos e impactos. prompt_imagem: cena de ambiente impactado negativamente.
-Slide 5 — A Virada: destaque um insight que muda a perspectiva. Título assertivo + texto (1-2 frases diretas, máx 30 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, SEM dados, percentuais ou fontes — foco na ideia transformadora). Sem imagem (prompt_imagem vazio).
-Slide 6 — O que Funciona: liste 3 a 5 práticas ou abordagens usando EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). SEM números ou fontes — apenas as práticas e conceitos. prompt_imagem: cena positiva/produtiva.
+Slide 5 — A Virada: destaque o insight específico que muda a perspectiva sobre o tema central — não um princípio genérico aplicável a qualquer negócio. Título assertivo (máx 4 palavras) + texto (1-2 frases diretas, máx 25 palavras) que nomeie a mudança de abordagem específica para este problema. SEM BULLET POINTS, sem listas, texto corrido, SEM dados. Sem imagem (prompt_imagem vazio).
+Slide 6 — O que Funciona: liste 3 a 5 resultados ou transformações concretas que o público-alvo obtém ao resolver o problema — escritos como benefícios vividos, não como nomes de funcionalidades. Use EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). Exemplo do nível esperado: em vez de "Monitoramento em tempo real", escreva "Cancela menos, porque age antes do problema escalar". prompt_imagem: cena positiva/produtiva.
 Slide 7 — Antes vs Depois: o campo "texto" deve ter EXATAMENTE este formato: "ANTES: [descrição do estado problemático em 1 frase]\n---\nDEPOIS: [descrição do estado melhorado em 1 frase]". SEM dados ou fontes — foque na transformação conceitual. O título deve ser o tema central da comparação (máx 6 palavras). prompt_imagem: cena de transformação ou ambiente melhorado.
 Slide 8 — CTA: título fixo "SE VOCÊ QUER UMA OPERAÇÃO 5 ESTRELAS, TESTE AGORA O DELIVERYDASH." + texto (descrição gerada, 1-2 frases, máx 25 palavras). prompt_imagem: um prato delicioso de restaurante profissional.
 """
 
-PROMPT_MISTO_DD = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
-Você produz conteúdo editorial para a {empresa}.
+PROMPT_MISTO_DD = """Você é um estrategista de conteúdo especializado em marketing direto para pequenas e médias empresas.
+Você produz conteúdo de vendas para a {empresa}.
 O público-alvo são {publico_alvo}.
-Todo o conteúdo deve ser em português brasileiro.
+Todo o conteúdo deve ser em português brasileiro, direto e coloquial — sem jargão corporativo.
 {contexto_compilado}
 {historico_recente}
-{padrao_qualidade}
 
 Gere um Carrossel Misto DD de 8 slides sobre o tema "{tema}":
 {estrutura}
@@ -1075,7 +1078,6 @@ def gerar_carrossel_misto_dd(
         estrutura=ESTRUTURA_CARROSSEL_MISTO_DD,
         contexto_compilado=bloco_ctx,
         historico_recente=_bloco_historico(empresa_id),
-        padrao_qualidade=PADRAO_QUALIDADE,
     )
 
     print(f"[LLM] Gerando Carrossel Misto DD para: '{tema}' ({empresa})...")
@@ -1119,28 +1121,138 @@ def gerar_carrossel_misto_dd(
 
 
 # ─────────────────────────────────────────────
+# B-Roll — prompts de vídeo por frase
+# ─────────────────────────────────────────────
+
+PROMPT_BROLL = """You are a creative video director for B2B content.
+For each sentence below, write a short English video prompt for a realistic, everyday scene that visually metaphorizes the concept.
+
+STRICT RULES:
+- Describe real-world, everyday scenes: people, physical objects, real environments
+- Never use: holograms, neural networks, neon effects, animations, abstract visuals, sci-fi, charts with text, dashboards
+- Be cinematic and specific: mention lighting, action, and camera angle
+- Metaphors should be intuitive (e.g. "coins falling into a drain in slow motion" for wasted money; "empty supermarket shelf under fluorescent lights" for stockout)
+
+Sentences:
+{sentences}
+
+Return ONLY valid JSON array, no explanation:
+[{{"index": 0, "prompt": "..."}}, ...]"""
+
+
+def gerar_prompts_broll(roteiro: str, word_timings: list) -> list[dict]:
+    """
+    Agrupa word_timings em frases completas (quebra em . ! ?) e gera um
+    prompt de vídeo realista para cada frase via Gemini.
+
+    word_timings: lista de objetos com .word, .start, .end (voz.WordTiming)
+
+    Retorna lista de {frase, prompt_video, start, end}.
+    """
+    # Agrupa palavras em frases por pontuação final
+    frases: list[dict] = []
+    current: list = []
+
+    for wt in word_timings:
+        current.append(wt)
+        if re.search(r"[.!?]$", wt.word.strip()):
+            frases.append({
+                "texto": " ".join(w.word for w in current),
+                "start": current[0].start,
+                "end":   current[-1].end,
+            })
+            current = []
+
+    # Palavras restantes sem pontuação final
+    if current:
+        frases.append({
+            "texto": " ".join(w.word for w in current),
+            "start": current[0].start,
+            "end":   current[-1].end,
+        })
+
+    if not frases:
+        return []
+
+    sentences_str = "\n".join(f'{i + 1}. "{f["texto"]}"' for i, f in enumerate(frases))
+    prompt = PROMPT_BROLL.format(sentences=sentences_str)
+
+    client = _get_client()
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0)
+        ),
+    )
+
+    _text = _get_response_text(response)
+    results = _parse_json(_text)
+
+    output = []
+    for i, frase in enumerate(frases):
+        prompt_video = next(
+            (r["prompt"] for r in results if r.get("index") == i), ""
+        )
+        output.append({
+            "frase":        frase["texto"],
+            "prompt_video": prompt_video,
+            "start":        frase["start"],
+            "end":          frase["end"],
+        })
+
+    print(f"[LLM] {len(output)} prompts de b-roll gerados.")
+    return output
+
+
+# ─────────────────────────────────────────────
 # Carrossel OldSchool
 # ─────────────────────────────────────────────
 
 ESTRUTURA_CARROSSEL_OLDSCHOOL = """
-Slide 1 — Capa: APENAS texto (máx 14 palavras, gancho imediato). prompt_imagem: cena rotineira de decisão de governo/poder público sem texto.
-Slide 2 — Problema: Texto com no máximo 25 palavras. prompt_imagem: cena contextual em escritório de governo, plenário ou judiciário.
-Slide 3 — Complicação: Texto com no máximo 25 palavras. prompt_imagem: OBRIGATÓRIO incluir na descrição que a parte DIREITA da imagem deve ser mais escura/limpa para receber texto. Cena no legislativo/executivo.
-Slide 4 — Impacto: Texto com no máximo 25 palavras. prompt_imagem: OBRIGATÓRIO incluir na descrição que a parte SUPERIOR ESQUERDA deve ser mais escura/limpa para receber texto.
-Slide 5 — Agravante: Texto com no máximo 25 palavras. prompt_imagem: cena contextual de rotina governamental.
-Slide 6 — Consequência: Texto com no máximo 25 palavras. prompt_imagem: OBRIGATÓRIO incluir na descrição que a parte SUPERIOR ESQUERDA deve ser mais escura/limpa.
-Slide 7 — Transição: Texto com no máximo 25 palavras. prompt_imagem: cena contextual de rotina de relações governamentais.
-Slide 8 — Solução: Explicação super objetiva (máx 25 palavras) de como a empresa resolve o problema (ex: "Na [Nome], o [Produto] cruza os dados..."). prompt_imagem: cena de análise de dados no contexto de governo/legislativo.
-Slide 9 — CTA: Texto CTA (ex: "Leve dados para sua próxima reunião. Conheça a [Nome]."). OBRIGATÓRIO incluir um campo "texto_botao" (padrão: "CADASTRE-SE AGORA"). prompt_imagem: cena de escritório governamental conclusiva.
+Slide 1 — Capa:
+  texto: APENAS gancho imediato, máx 14 palavras.
+  prompt_imagem: cena rotineira de decisão de governo/poder público sem texto.
+
+Slide 2 — Problema:
+  texto: máx 25 palavras.
+  prompt_imagem: cena contextual em escritório de governo, plenário ou judiciário.
+
+Slide 3 — Complicação:
+  texto: máx 25 palavras.
+  prompt_imagem: cena no legislativo/executivo onde a parte DIREITA da cena seja naturalmente mais escura ou vazia (sombra, fundo desfocado, parede sólida) para receber texto sobreposto. NÃO mencione texto, letras ou legendas.
+
+Slide 4 — Impacto: consequência concreta e específica ao universo regulatório/legislativo — pense em janelas de influência perdidas, exposição a risco regulatório ou passivo de compliance, nunca "perdas financeiras significativas" genéricas.
+  texto: máx 25 palavras.
+  prompt_imagem: cena regulatória/legislativa onde a parte SUPERIOR ESQUERDA da cena seja naturalmente mais escura ou vazia (sombra, fundo neutro) para receber texto sobreposto. NÃO mencione texto, letras ou legendas.
+
+Slide 5 — Agravante:
+  texto: máx 25 palavras.
+  prompt_imagem: cena contextual de rotina governamental.
+
+Slide 6 — Consequência:
+  texto: máx 25 palavras.
+  prompt_imagem: cena regulatória onde a parte SUPERIOR ESQUERDA da cena seja naturalmente mais escura ou vazia (sombra, fundo neutro). NÃO mencione texto, letras ou legendas.
+
+Slide 7 — Transição: reframe preciso sobre o que separa uma operação de RIG reativa de uma proativa — sem usar "líderes de mercado", "vantagem competitiva", "automação inteligente" ou equivalentes genéricos. O texto deve nomear a mudança de postura ou de abordagem específica ao monitoramento regulatório.
+  texto: máx 25 palavras.
+  prompt_imagem: cena contextual de rotina de relações governamentais.
+
+Slide 8 — Solução: apresente a empresa como solução explícita ao problema do carrossel. Mencione as fontes de dados que ela consolida (ex: Congresso, Diários Oficiais, agências reguladoras, BACEN, CVM, redes sociais de stakeholders) e o que isso entrega ao profissional de RIG — alerta no momento certo, visão unificada, eliminação do trabalho manual.
+  texto: máx 25 palavras.
+  prompt_imagem: cena de análise de dados no contexto de governo/legislativo.
+
+Slide 9 — CTA: convite direto à ação (ex: "Leve dados para sua próxima reunião. Conheça a [Nome]."). OBRIGATÓRIO incluir o campo "texto_botao" (padrão: "CADASTRE-SE AGORA").
+  texto: máx 25 palavras.
+  prompt_imagem: cena de escritório governamental conclusiva.
 """
 
-PROMPT_OLDSCHOOL = """Você é um estrategista de conteúdo B2B especializado em tecnologia corporativa.
-Você produz conteúdo editorial para a {empresa}.
+PROMPT_OLDSCHOOL = """Você é um estrategista de conteúdo B2B especializado em inteligência regulatória e relações governamentais.
+Você produz conteúdo institucional para a {empresa}.
 O público-alvo são {publico_alvo}.
-Todo o conteúdo deve ser em português brasileiro.
+Todo o conteúdo deve ser em português brasileiro — tom sóbrio, preciso e autoritativo. Sem jargão de marketing, sem hipérboles, sem linguagem de vendas.
 {contexto_compilado}
 {historico_recente}
-{padrao_qualidade}
 
 Gere um Carrossel OldSchool de 9 slides sobre o tema "{tema}":
 {estrutura}
@@ -1177,7 +1289,7 @@ def gerar_carrossel_oldschool(
     prompt = PROMPT_OLDSCHOOL.format(
         empresa=empresa, publico_alvo=publico_alvo, tema=tema,
         estrutura=ESTRUTURA_CARROSSEL_OLDSCHOOL, contexto_compilado=bloco_ctx,
-        historico_recente=_bloco_historico(empresa_id), padrao_qualidade=PADRAO_QUALIDADE,
+        historico_recente=_bloco_historico(empresa_id),
     )
     print(f"[LLM] Gerando Carrossel OldSchool para: '{tema}' ({empresa})...")
     config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())], thinking_config=types.ThinkingConfig(thinking_budget=0))

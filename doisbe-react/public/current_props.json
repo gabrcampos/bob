@@ -1,0 +1,7 @@
+{
+  "brollSrc": "broll_react.mp4",
+  "youtubeSrc": "youtube.mp4",
+  "youtubeStartFrom": 0,
+  "brollStartFrom": 0,
+  "durationInFrames": 300
+}

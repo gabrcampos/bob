@@ -11,7 +11,23 @@
       "WebFetch(domain:www.stablediffusiontutorials.com)",
       "WebFetch(domain:www.strategyand.pwc.com)",
       "WebFetch(domain:www.lek.com)",
-      "Bash(python -m py_compile modulos/llm_brain.py)"
+      "Bash(python -m py_compile modulos/llm_brain.py)",
+      "PowerShell(head -30)",
+      "WebFetch(domain:platform.minimax.io)",
+      "WebFetch(domain:lumaai-help.freshdesk.com)",
+      "Bash(pip show *)",
+      "Bash(python -c \"from google import genai; print\\(genai.__version__\\)\")",
+      "Bash(python -c \"from google.genai import types; attrs = [a for a in dir\\(types\\) if 'video' in a.lower\\(\\) or 'Video' in a]; print\\(attrs\\)\")",
+      "Bash(python -c \"from google.genai import types; help\\(types.GenerateVideosConfig\\)\")",
+      "Bash(python -c \"from google.genai import types; help\\(types.GeneratedVideo\\)\")",
+      "Bash(python -c \"from google.genai import types; help\\(types.Video\\)\")",
+      "PowerShell(Start-Process -FilePath \"venv\\\\Scripts\\\\streamlit.exe\" -ArgumentList \"run app.py --server.port 8502\" -NoNewWindow -PassThru | Select-Object Id, ProcessName)",
+      "PowerShell(Start-Process -FilePath \"venv\\\\Scripts\\\\streamlit.exe\" -ArgumentList \"run app.py --server.port 8503\" -NoNewWindow -PassThru | Select-Object Id, ProcessName)",
+      "Bash(python scripts/render_cachaca.py --company doisbe)",
+      "Bash(python scripts/render_cachaca.py --company doisbe --skip-download)",
+      "Bash(python scripts/render_broll_text.py --company doisbe --count 5 --texts-file companies/doisbe/broll_texts_cachaca.txt --audio-dir companies/doisbe/assets/audio/cachaca/pool)",
+      "Bash(python scripts/render_next_step.py --company doisbe --force)",
+      "Bash(python scripts/render_next_step.py --company doisbe --min-duration 15 --max-clip-secs 1.5 --force)"
     ]
   }
 }

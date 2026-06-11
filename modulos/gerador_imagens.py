@@ -374,8 +374,8 @@ def _carregar_fonte(nome: str | None, tamanho: int, negrito: bool = False) -> Im
 # ─────────────────────────────────────────────
 
 _MODELOS_IMAGEM = [
-    "imagen-4.0-ultra-generate-001",
     "imagen-4.0-fast-generate-001",
+    "imagen-4.0-ultra-generate-001",
     "imagen-3.0-generate-001",
     "gemini-2.5-flash-image",
     "gemini-2.0-flash-exp-image",
@@ -560,6 +560,28 @@ def _strip_letterbox(img: Image.Image, threshold: int = 18) -> Image.Image:
     if top == 0 and bottom == h - 1 and left == 0 and right == w - 1:
         return img
     return img.crop((left, top, right + 1, bottom + 1))
+
+
+def _has_interior_dark_band(img: Image.Image, threshold: int = 25, min_rows: int = 8) -> bool:
+    """Detecta faixas pretas horizontais no interior da imagem (seam de AI split-screen).
+    Ignora o top e bottom 20% (que podem ter gradientes legítimos)."""
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    step_x = max(1, w // 60)
+    margin = h // 5
+
+    def _row_max(y: int) -> int:
+        return max(max(rgb.getpixel((x, y))) for x in range(step_x, w - step_x, step_x))
+
+    count = 0
+    for y in range(margin, h - margin):
+        if _row_max(y) <= threshold:
+            count += 1
+            if count >= min_rows:
+                return True
+        else:
+            count = 0
+    return False
 
 
 def _lh(draw: ImageDraw.ImageDraw, texto: str, font) -> int:
@@ -1925,8 +1947,19 @@ def _gerar_fundo_oldschool(slide: dict, identidade_visual: dict) -> bytes | None
     if not prompt_imagem: return None
     estilo = identidade_visual.get("estilo_imagem", "")
     cores = identidade_visual.get("primarias", [])
-    try: return _gerar_fundo(prompt_imagem, estilo, cores)
-    except Exception as e: print(f"[OldSchool] Erro IA slide {slide.get('slide')}: {e}"); return None
+    slide_num = slide.get("slide", "?")
+    for tentativa in range(3):
+        try:
+            data = _gerar_fundo(prompt_imagem, estilo, cores)
+            if _has_interior_dark_band(Image.open(BytesIO(data))):
+                print(f"[OldSchool] Slide {slide_num}: faixa preta interna detectada (tentativa {tentativa + 1}), regenerando...")
+                continue
+            return data
+        except Exception as e:
+            print(f"[OldSchool] Erro IA slide {slide_num}: {e}")
+            return None
+    print(f"[OldSchool] Slide {slide_num}: faixa persistente após 3 tentativas, usando última imagem gerada.")
+    return data
 
 def gerar_imagens_carrossel_oldschool(
     slides: list[dict],
@@ -1952,7 +1985,7 @@ def gerar_imagens_carrossel_oldschool(
     for i, slide in enumerate(slides):
         n = int(slide.get("slide", i + 1))
         dest = pasta / f"slide_{n:02d}.png"
-        print(f"[OldSchool] Gerando slide {n} → {dest.name}")
+        print(f"[OldSchool] Gerando slide {n} -> {dest.name}")
 
         bg_cache = pasta / f"bg_{n:02d}.png"
         print(f"[OldSchool] Gerando imagem IA para slide {n}...")
@@ -2318,7 +2351,7 @@ def gerar_imagens_carrossel_tweet(
     for i, slide in enumerate(slides):
         n    = int(slide.get("slide", i + 1))   # garante int mesmo que o JSON retorne string
         dest = pasta / f"slide_{n:02d}.png"
-        print(f"[Tweet] Gerando slide {n} → {dest.name}")
+        print(f"[Tweet] Gerando slide {n} -> {dest.name}")
 
         bg_cache = pasta / f"bg_{n:02d}.png"
         fundo_bytes = None
@@ -2378,7 +2411,7 @@ def gerar_imagem_slide_tweet(
 
     n    = int(slide.get("slide", 1))
     dest = pasta / f"slide_{n:02d}.png"
-    print(f"[Tweet] Regenerando slide {n} → {dest.name}")
+    print(f"[Tweet] Regenerando slide {n} -> {dest.name}")
 
     bg_cache = pasta / f"bg_{n:02d}.png"
     fundo_bytes = None
@@ -3347,7 +3380,7 @@ def gerar_imagens_carrossel_misto_dd(
     for i, slide in enumerate(slides):
         n    = int(slide.get("slide", i + 1))
         dest = pasta / f"slide_{n:02d}.png"
-        print(f"[MistoDD] Gerando slide {n} → {dest.name}")
+        print(f"[MistoDD] Gerando slide {n} -> {dest.name}")
 
         img_bytes = None
         bg_cache  = pasta / f"bg_{n:02d}.png"
@@ -3402,7 +3435,7 @@ def gerar_imagem_slide_misto_dd(
 
     n    = int(slide.get("slide", 1))
     dest = pasta / f"slide_{n:02d}.png"
-    print(f"[MistoDD] Regenerando slide {n} → {dest.name}")
+    print(f"[MistoDD] Regenerando slide {n} -> {dest.name}")
 
     img_bytes = None
     bg_cache  = pasta / f"bg_{n:02d}.png"
