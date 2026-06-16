@@ -7,19 +7,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def _ydl_opts_base() -> dict:
-    return {
-        "quiet": True,
-        "no_warnings": True,
-        "cookiesfrombrowser": ("chrome",),
-    }
+def _ydl_opts_base(cookies: str | None = None) -> dict:
+    opts = {"quiet": True, "no_warnings": True}
+    if cookies:
+        opts["cookiefile"] = cookies
+    else:
+        opts["cookiesfrombrowser"] = ("chrome",)
+    return opts
 
 
 def listar_videos_perfil(
     perfil: str,
     desde: datetime,
     destino: Path,
-    usuario: str | None = None,  # mantido por compatibilidade, não usado com yt-dlp
+    usuario: str | None = None,
+    cookies: str | None = None,
 ) -> list[dict]:
     """
     Retorna metadados dos vídeos/reels do perfil desde `desde`,
@@ -30,7 +32,7 @@ def listar_videos_perfil(
     desde_utc = desde.replace(tzinfo=timezone.utc) if desde.tzinfo is None else desde
 
     opts = {
-        **_ydl_opts_base(),
+        **_ydl_opts_base(cookies),
         "extract_flat": True,
     }
 
@@ -75,7 +77,7 @@ def listar_videos_perfil(
     return videos
 
 
-def baixar_video(video: dict, destino: Path | None = None) -> Path:
+def baixar_video(video: dict, destino: Path | None = None, cookies: str | None = None) -> Path:
     """Baixa um vídeo usando yt-dlp (mais robusto que requests direto)."""
     import yt_dlp
 
@@ -92,7 +94,7 @@ def baixar_video(video: dict, destino: Path | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     opts = {
-        **_ydl_opts_base(),
+        **_ydl_opts_base(cookies),
         "outtmpl": str(path.with_suffix("")),
         "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "merge_output_format": "mp4",

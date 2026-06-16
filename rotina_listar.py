@@ -38,7 +38,8 @@ def proximos_slots(a_partir: datetime, quantidade: int) -> list[datetime]:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--perfil",  required=True, help="Handle do Instagram a varrer (sem @)")
-    parser.add_argument("--usuario", default=None,  help="Seu handle do Instagram para autenticação (sem @)")
+    parser.add_argument("--usuario", default=None,  help="Seu handle do Instagram (legado, não usado)")
+    parser.add_argument("--cookies", default="cookies.txt", help="Arquivo cookies.txt exportado do browser (padrão: cookies.txt)")
     parser.add_argument("--empresa", default=None,  help="empresa_id (padrão: mesmo que --perfil)")
     parser.add_argument("--desde",   default="2023-07-29", help="Data de corte YYYY-MM-DD")
     parser.add_argument("--dias",    type=int, default=7, help="Dias de conteúdo a selecionar (padrão: 7)")
@@ -52,7 +53,10 @@ def main():
     from modulos.instagram import listar_videos_perfil
     from modulos.db import ja_agendado
 
-    videos = listar_videos_perfil(args.perfil, desde, destino, usuario=args.usuario)
+    cookies = args.cookies if Path(args.cookies).exists() else None
+    if not cookies:
+        print(f"[Aviso] {args.cookies} não encontrado — tentando sem autenticação.")
+    videos = listar_videos_perfil(args.perfil, desde, destino, cookies=cookies)
     if not videos:
         print("Nenhum vídeo encontrado.")
         sys.exit(0)
