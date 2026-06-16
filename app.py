@@ -1228,6 +1228,10 @@ with st.sidebar:
                             st.rerun()
     
     st.divider()
+    if st.button("📅 Agenda", width='stretch'):
+        st.session_state.view = "agenda"
+        st.rerun()
+
     if st.button("🏢 Configurar Empresas", width='stretch'):
         st.session_state.view = "empresas"
         st.rerun()
@@ -1866,6 +1870,131 @@ elif st.session_state.view == "conteudos":
         elif tipo == "blog":
             _render_md_list(filtered_docs, "blog", "blog", 500, "blg", emp,
                 fn_regenerar=lambda tema: llm_brain.gerar_blog(tema, emp["nome"], emp["id"], emp["publico_alvo"], emp.get("url_site", "")))
+
+elif st.session_state.view == "agenda":
+    st.title("📅 Agenda de Postagens")
+
+    _STATUS_COLOR = {
+        "pendente":     "#3B82F6",
+        "processando":  "#F59E0B",
+        "publicado":    "#22C55E",
+        "erro":         "#EF4444",
+    }
+    _PLAT_ICON = {
+        "youtube_shorts": "▶ YouTube Shorts",
+        "tiktok":         "♪ TikTok",
+    }
+
+    # ── Filtros ──────────────────────────────────────────────
+    col_f1, col_f2, col_f3 = st.columns(3)
+    nomes_emp = ["Todas"] + [e["nome"] for e in empresas]
+    filtro_emp = col_f1.selectbox("Empresa", nomes_emp, key="ag_emp")
+    filtro_plat = col_f2.selectbox("Plataforma", ["Todas", "youtube_shorts", "tiktok"], key="ag_plat")
+    filtro_status = col_f3.selectbox("Status", ["Todos", "pendente", "processando", "publicado", "erro"], key="ag_status")
+
+    emp_id_filtro = None
+    if filtro_emp != "Todas":
+        emp_obj = next((e for e in empresas if e["nome"] == filtro_emp), None)
+        if emp_obj:
+            emp_id_filtro = emp_obj["id"]
+
+    docs_agenda = db.listar_agenda(
+        empresa_id=emp_id_filtro,
+        plataforma=None if filtro_plat == "Todas" else filtro_plat,
+        status=None if filtro_status == "Todos" else filtro_status,
+    )
+
+    st.caption(f"{len(docs_agenda)} agendamento(s) encontrado(s)")
+    st.divider()
+
+    # ── Lista de agendamentos ─────────────────────────────────
+    if not docs_agenda:
+        st.info("Nenhum agendamento encontrado com esses filtros.")
+    else:
+        for ag in docs_agenda:
+            ag_id = ag["_id"]
+            plat_label = _PLAT_ICON.get(ag.get("plataforma", ""), ag.get("plataforma", ""))
+            status = ag.get("status", "pendente")
+            cor = _STATUS_COLOR.get(status, "#6B7280")
+            data_hora = ag.get("data_hora")
+            data_str = data_hora.strftime("%d/%m/%Y %H:%M") if data_hora else "—"
+
+            with st.container(border=True):
+                col_info, col_acoes = st.columns([4, 1])
+                with col_info:
+                    st.markdown(
+                        f"**{plat_label}** &nbsp;·&nbsp; {ag.get('empresa_id', '')} &nbsp;·&nbsp; {data_str}"
+                    )
+                    texto = ag.get("texto", "")
+                    if texto:
+                        st.caption(texto[:120] + ("…" if len(texto) > 120 else ""))
+                    video_path = ag.get("video_path", "")
+                    if video_path:
+                        st.caption(f"🎬 {video_path[:80]}")
+                    erro_msg = ag.get("erro_msg")
+                    if erro_msg:
+                        st.error(f"Erro: {erro_msg}")
+                    st.markdown(
+                        f'<span style="color:{cor};font-weight:600;font-size:13px">● {status.upper()}</span>',
+                        unsafe_allow_html=True,
+                    )
+                    if ag.get("platform_post_id"):
+                        st.caption(f"ID publicado: {ag['platform_post_id']}")
+                with col_acoes:
+                    if status in ("pendente", "erro"):
+                        if st.button("▶ Publicar agora", key=f"pub_{ag_id}", use_container_width=True):
+                            import requests as _req
+                            try:
+                                r = _req.post(f"http://localhost:8001/publicar/{ag_id}", timeout=5)
+                                if r.status_code == 202:
+                                    st.success("Publicação iniciada!")
+                                else:
+                                    st.error(f"Erro: {r.text}")
+                            except Exception as _e:
+                                st.error(f"API indisponível: {_e}")
+                            st.rerun()
+                    if st.button("🗑 Remover", key=f"del_{ag_id}", use_container_width=True):
+                        db.excluir_agendamento(ag_id)
+                        st.rerun()
+
+    # ── Novo agendamento ──────────────────────────────────────
+    st.divider()
+    with st.expander("➕ Novo agendamento"):
+        if not empresas:
+            st.warning("Cadastre uma empresa primeiro.")
+        else:
+            nomes_n = [e["nome"] for e in empresas]
+            ag_emp_novo = st.selectbox("Empresa", nomes_n, key="ag_novo_emp")
+            emp_novo = next(e for e in empresas if e["nome"] == ag_emp_novo)
+
+            docs_vid = db.listar_conteudos(emp_novo["id"], "video", limit=50)
+            if not docs_vid:
+                st.info("Nenhum conteúdo de vídeo gerado para esta empresa.")
+            else:
+                opcoes_vid = {f"{d['tema'][:60]} ({d['_id'][-6:]})": d["_id"] for d in docs_vid}
+                sel_vid = st.selectbox("Conteúdo (vídeo)", list(opcoes_vid.keys()), key="ag_novo_vid")
+                conteudo_id_novo = opcoes_vid[sel_vid]
+
+                ag_plat_novo = st.selectbox("Plataforma", ["youtube_shorts", "tiktok"], key="ag_novo_plat")
+                ag_data = st.date_input("Data", key="ag_novo_data")
+                ag_hora = st.time_input("Hora (UTC)", key="ag_novo_hora")
+                ag_texto = st.text_area("Título / Legenda", key="ag_novo_texto", height=80)
+                ag_video_path = st.text_input("Caminho do vídeo (local ou gs://)", key="ag_novo_path",
+                                              placeholder="outputs/.../video.mp4  ou  gs://bob-videos/...")
+
+                if st.button("Agendar", type="primary", key="ag_novo_btn"):
+                    from datetime import datetime as _dt
+                    data_hora_nova = _dt.combine(ag_data, ag_hora)
+                    db.agendar_post(
+                        conteudo_id=conteudo_id_novo,
+                        empresa_id=emp_novo["id"],
+                        plataforma=ag_plat_novo,
+                        data_hora=data_hora_nova,
+                        texto=ag_texto,
+                        video_path=ag_video_path,
+                    )
+                    st.success("Agendado com sucesso!")
+                    st.rerun()
 
 else:
     # Fallback to default view if state is invalid

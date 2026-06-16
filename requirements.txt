@@ -10,3 +10,6 @@ google-auth
 google-auth-oauthlib
 pymongo
 yt-dlp
+fastapi
+uvicorn[standard]
+google-cloud-storage

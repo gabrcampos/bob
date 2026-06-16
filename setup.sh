@@ -31,7 +31,7 @@ sudo apt install -y nodejs
 # ── 4. Claude Code ─────────────────────────
 echo ""
 echo "[4/7] Instalando Claude Code..."
-sudo npm install -g @anthropic/claude-code
+sudo npm install -g @anthropic-ai/claude-code
 
 # ── 5. Projeto ─────────────────────────────
 echo ""

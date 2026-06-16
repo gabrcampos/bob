@@ -234,6 +234,7 @@ def agendar_post(
     plataforma: str,
     data_hora: datetime,
     texto: str = "",
+    video_path: str = "",
 ) -> str:
     """Cria um agendamento. Retorna o _id como string."""
     doc = {
@@ -242,8 +243,10 @@ def agendar_post(
         "plataforma":       plataforma,
         "data_hora":        data_hora,
         "texto":            texto,
+        "video_path":       video_path,
         "status":           "pendente",
         "platform_post_id": None,
+        "erro_msg":         None,
         "criado_em":        _agora(),
         "atualizado_em":    _agora(),
     }
