@@ -36,7 +36,7 @@ def listar_videos_perfil(
         "extract_flat": True,
     }
 
-    url = f"https://www.instagram.com/{perfil}/reels/"
+    url = f"https://www.instagram.com/{perfil}/"
     print(f"[Instagram] Varrendo @{perfil} (usando cookies do Chrome)...")
 
     with yt_dlp.YoutubeDL(opts) as ydl:
