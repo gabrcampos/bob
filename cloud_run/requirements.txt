@@ -1,8 +1,11 @@
 flask
+gunicorn
 google-cloud-storage
 google-api-python-client
 google-auth
 google-auth-oauthlib
-pymongo
+pymongo[srv]
+dnspython
+certifi
 python-dotenv
 requests
