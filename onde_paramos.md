@@ -6,8 +6,10 @@ Atualizado em: 16 de junho de 2026
 
 ## Status geral
 
-Pipeline Instagram → YouTube Shorts 100% funcional.
-28 vídeos do perfil @fs_negao agendados de 17/06 a 23/06/2026.
+Pipeline Instagram → YouTube Shorts 100% funcional, incluindo publicação automática via Cloud Run.
+
+26 vídeos do perfil @fs_negao agendados de 17/06 a 23/06/2026 (2 já publicados hoje).
+O Cloud Run publica automaticamente a cada 5 minutos quando chega o horário.
 
 ---
 
@@ -30,7 +32,7 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 
 | Recurso | Detalhe |
 |---|---|
-| Cloud Run | `https://bob-worker-qq45ltq2bq-ue.a.run.app` |
+| Cloud Run | `https://bob-worker-487590427215.us-east1.run.app` |
 | Cloud Scheduler | `bob-worker-job` — a cada 5 minutos |
 | Bucket GCS | `gs://bob-videos-487590427215` |
 | Secret Manager | `mongodb-uri` |
@@ -38,17 +40,27 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 
 ---
 
+## Horários de postagem
+
+4 posts por dia, nos melhores horários para YouTube Shorts:
+
+| BRT | UTC |
+|---|---|
+| 07:00 | 10:00 |
+| 12:00 | 15:00 |
+| 17:00 | 20:00 |
+| 21:00 | 00:00 (dia seguinte) |
+
+---
+
 ## Pendências / próximos passos
 
-- [ ] **Liberar IP do Cloud Run no MongoDB Atlas** — atualmente o worker falha ao conectar.
-  Solução: MongoDB Atlas → Network Access → Add IP → `0.0.0.0/0`
-  (sem isso o Cloud Run não publica automaticamente — apenas o `testar_post.py` local funciona)
+- [ ] **Automatizar a rotina semanal** — rodar `rotina_listar.py` + `rotina_instagram_youtube.py`
+  toda semana para abastecer a fila com os próximos 28 vídeos
+  (sugestão: toda segunda-feira de manhã)
 
 - [ ] **Migrar para Instagram Basic Display API** — usar a conta @fs_negao diretamente
-  para evitar qualquer risco de bloqueio da conta @ggcampos_ usada hoje para scraping
-
-- [ ] **Automatizar a rotina semanal** — agendar `rotina_listar.py` via Cloud Scheduler
-  ou lembrete no calendário para rodar toda segunda-feira
+  para evitar risco de bloqueio da conta usada hoje para scraping via cookies.txt
 
 ---
 
@@ -57,8 +69,8 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 | Arquivo | O que é | Onde está |
 |---|---|---|
 | `config/youtube_token.json` | OAuth do canal YouTube destino | Servidor + PC local |
-| `config/service_account.json` | Service Account GCP para GCS | Servidor + PC local (no git) |
-| `.env` | MONGODB_URI + outras variáveis | Servidor (não está no git) |
+| `config/service_account.json` | Service Account GCP para GCS | Servidor + PC local |
+| `.env` | MONGODB_URI | Servidor (não está no git) |
 | `cookies.txt` | Cookies do Instagram para scraping | PC local (não está no git) |
 
 ---
@@ -77,4 +89,10 @@ python checar_agenda.py
 
 # Postar próximo vídeo manualmente (PC local)
 python testar_post.py
+
+# Listar vídeos do Instagram e gerar JSON (PC local)
+python rotina_listar.py --perfil fs_negao
+
+# Baixar, subir e agendar a partir do JSON (PC local)
+python rotina_instagram_youtube.py --lista lista_fs_negao.json
 ```
