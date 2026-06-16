@@ -13,4 +13,3 @@ yt-dlp
 fastapi
 uvicorn[standard]
 google-cloud-storage
-gallery-dl
