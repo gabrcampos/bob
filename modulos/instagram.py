@@ -1,19 +1,19 @@
 """
-Download de vídeos de perfis do Instagram via yt-dlp.
-Usa cookies do Chrome para autenticação (precisa estar logado no Chrome).
+Download de vídeos de perfis do Instagram via gallery-dl.
+Usa cookies.txt exportado do browser para autenticação.
 """
 
+import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-def _ydl_opts_base(cookies: str | None = None) -> dict:
-    opts = {"quiet": True, "no_warnings": True}
-    if cookies:
-        opts["cookiefile"] = cookies
-    else:
-        opts["cookiesfrombrowser"] = ("chrome",)
-    return opts
+def _gallery_dl_cmd(cookies: str | None) -> list[str]:
+    cmd = ["gallery-dl"]
+    if cookies and Path(cookies).exists():
+        cmd += ["--cookies", cookies]
+    return cmd
 
 
 def listar_videos_perfil(
@@ -24,52 +24,70 @@ def listar_videos_perfil(
     cookies: str | None = None,
 ) -> list[dict]:
     """
-    Retorna metadados dos vídeos/reels do perfil desde `desde`,
+    Retorna metadados dos vídeos do perfil desde `desde`,
     ordenados por visualizações decrescente.
     """
-    import yt_dlp
-
     desde_utc = desde.replace(tzinfo=timezone.utc) if desde.tzinfo is None else desde
 
-    opts = {
-        **_ydl_opts_base(cookies),
-        "extract_flat": True,
-    }
+    cmd = _gallery_dl_cmd(cookies) + ["--dump-json", f"https://www.instagram.com/{perfil}/"]
+    print(f"[Instagram] Varrendo @{perfil}...")
 
-    url = f"https://www.instagram.com/{perfil}/"
-    print(f"[Instagram] Varrendo @{perfil} (usando cookies do Chrome)...")
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    if proc.returncode != 0 and not proc.stdout:
+        raise RuntimeError(f"gallery-dl falhou:\n{proc.stderr}")
 
-    entries = info.get("entries", []) if info else []
     videos = []
-
-    for entry in entries:
-        if not entry:
+    for line in proc.stdout.strip().splitlines():
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
             continue
 
-        upload_date = entry.get("upload_date") or ""
-        try:
-            post_date = datetime.strptime(upload_date, "%Y%m%d").replace(tzinfo=timezone.utc) if upload_date else None
-        except ValueError:
-            post_date = None
+        # gallery-dl retorna listas [version, index, {data}] ou dicts diretos
+        if isinstance(data, list):
+            data = data[-1] if data else {}
+        if not isinstance(data, dict):
+            continue
+
+        video_url = data.get("video_url") or data.get("url", "")
+        if not video_url or not video_url.endswith(".mp4") and "video" not in video_url:
+            continue
+
+        shortcode = data.get("shortcode") or data.get("post_shortcode", "")
+        if not shortcode:
+            continue
+
+        # Data do post
+        raw_date = data.get("date") or data.get("upload_date")
+        post_date = None
+        if raw_date:
+            try:
+                if isinstance(raw_date, str) and len(raw_date) == 8:
+                    post_date = datetime.strptime(raw_date, "%Y%m%d").replace(tzinfo=timezone.utc)
+                elif isinstance(raw_date, (int, float)):
+                    post_date = datetime.fromtimestamp(raw_date, tz=timezone.utc)
+                elif isinstance(raw_date, str):
+                    post_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            except Exception:
+                pass
 
         if post_date and post_date < desde_utc:
             continue
 
-        video_id = entry.get("id", "")
-        if not video_id:
-            continue
+        date_prefix = post_date.strftime("%Y%m%d") if post_date else "sem_data"
+        filename = f"{date_prefix}_{shortcode}.mp4"
 
         videos.append({
-            "shortcode":  video_id,
-            "views":      entry.get("view_count", 0) or 0,
-            "caption":    entry.get("title", "") or entry.get("description", "") or "",
+            "shortcode":  shortcode,
+            "views":      data.get("view_count", 0) or data.get("views", 0) or 0,
+            "caption":    data.get("description", "") or data.get("caption", "") or "",
             "data_post":  post_date or desde_utc,
-            "video_url":  f"https://www.instagram.com/reel/{video_id}/",
-            "filename":   f"{upload_date or 'sem_data'}_{video_id}.mp4",
-            "local_path": destino / f"{upload_date or 'sem_data'}_{video_id}.mp4",
+            "video_url":  video_url,
+            "filename":   filename,
+            "local_path": destino / filename,
         })
 
     videos.sort(key=lambda v: v["views"], reverse=True)
@@ -78,9 +96,7 @@ def listar_videos_perfil(
 
 
 def baixar_video(video: dict, destino: Path | None = None, cookies: str | None = None) -> Path:
-    """Baixa um vídeo usando yt-dlp (mais robusto que requests direto)."""
-    import yt_dlp
-
+    """Baixa um vídeo usando gallery-dl."""
     if "local_path" in video:
         path = Path(video["local_path"])
     else:
@@ -93,17 +109,13 @@ def baixar_video(video: dict, destino: Path | None = None, cookies: str | None =
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    opts = {
-        **_ydl_opts_base(cookies),
-        "outtmpl": str(path.with_suffix("")),
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "merge_output_format": "mp4",
-    }
+    cmd = _gallery_dl_cmd(cookies) + [
+        "--output", str(path.with_suffix("")),
+        video["video_url"],
+    ]
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([video["video_url"]])
+    subprocess.run(cmd, check=True)
 
-    # yt-dlp pode adicionar extensão
     if not path.exists() and path.with_suffix(".mp4").exists():
         path = path.with_suffix(".mp4")
 
