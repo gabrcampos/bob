@@ -10,11 +10,13 @@ def listar_videos_perfil(
     perfil: str,
     desde: datetime,
     destino: Path,
+    usuario: str | None = None,
 ) -> list[dict]:
     """
     Retorna metadados de todos os vídeos do perfil desde `desde`,
     ordenados por visualizações decrescente.
     Não baixa o arquivo — só coleta metadados.
+    `usuario` é o handle da conta usada para login (sessão salva pelo instaloader).
     """
     import instaloader
 
@@ -27,6 +29,14 @@ def listar_videos_perfil(
         post_metadata_txt_pattern="",
         quiet=True,
     )
+
+    if usuario:
+        try:
+            loader.load_session_from_file(usuario)
+            print(f"[Instagram] Sessão carregada para @{usuario}.")
+        except FileNotFoundError:
+            print(f"[Instagram] Sessão de @{usuario} não encontrada. Rode: instaloader --login {usuario}")
+            raise
 
     profile = instaloader.Profile.from_username(loader.context, perfil)
     desde_utc = desde.replace(tzinfo=timezone.utc) if desde.tzinfo is None else desde

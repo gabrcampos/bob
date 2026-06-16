@@ -93,9 +93,10 @@ def main():
     grupo = parser.add_mutually_exclusive_group(required=True)
     grupo.add_argument("--lista",   help="JSON gerado por rotina_listar.py (modo recomendado)")
     grupo.add_argument("--perfil",  help="Handle do Instagram — varre e processa tudo localmente")
-    parser.add_argument("--empresa", default=None, help="empresa_id (padrão: mesmo que --perfil)")
-    parser.add_argument("--desde",  default="2023-07-29", help="Data de corte YYYY-MM-DD (só com --perfil)")
-    parser.add_argument("--dias",   type=int, default=7, help="Dias de conteúdo por rodada (só com --perfil)")
+    parser.add_argument("--usuario", default=None,  help="Seu handle do Instagram para autenticação (sem @)")
+    parser.add_argument("--empresa", default=None,  help="empresa_id (padrão: mesmo que --perfil)")
+    parser.add_argument("--desde",   default="2023-07-29", help="Data de corte YYYY-MM-DD (só com --perfil)")
+    parser.add_argument("--dias",    type=int, default=7, help="Dias de conteúdo por rodada (só com --perfil)")
     parser.add_argument("--destino", default="outputs/instagram", help="Pasta local para downloads")
     args = parser.parse_args()
 
@@ -117,7 +118,7 @@ def main():
         destino = Path(args.destino) / args.perfil
         destino.mkdir(parents=True, exist_ok=True)
 
-        videos = listar_videos_perfil(args.perfil, desde, destino)
+        videos = listar_videos_perfil(args.perfil, desde, destino, usuario=args.usuario)
         if not videos:
             print("Nenhum vídeo encontrado.")
             sys.exit(0)
