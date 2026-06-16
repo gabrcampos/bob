@@ -1,61 +1,73 @@
 """
-Download de vídeos de perfis públicos do Instagram via instaloader.
+Download de vídeos de perfis do Instagram via yt-dlp.
+Usa cookies do Chrome para autenticação (precisa estar logado no Chrome).
 """
 
 from datetime import datetime, timezone
 from pathlib import Path
 
 
+def _ydl_opts_base() -> dict:
+    return {
+        "quiet": True,
+        "no_warnings": True,
+        "cookiesfrombrowser": ("chrome",),
+    }
+
+
 def listar_videos_perfil(
     perfil: str,
     desde: datetime,
     destino: Path,
-    usuario: str | None = None,
+    usuario: str | None = None,  # mantido por compatibilidade, não usado com yt-dlp
 ) -> list[dict]:
     """
-    Retorna metadados de todos os vídeos do perfil desde `desde`,
+    Retorna metadados dos vídeos/reels do perfil desde `desde`,
     ordenados por visualizações decrescente.
-    Não baixa o arquivo — só coleta metadados.
-    `usuario` é o handle da conta usada para login (sessão salva pelo instaloader).
     """
-    import instaloader
+    import yt_dlp
 
-    loader = instaloader.Instaloader(
-        download_videos=False,
-        download_video_thumbnails=False,
-        download_geotags=False,
-        download_comments=False,
-        save_metadata=False,
-        post_metadata_txt_pattern="",
-        quiet=True,
-    )
-
-    if usuario:
-        try:
-            loader.load_session_from_file(usuario)
-            print(f"[Instagram] Sessão carregada para @{usuario}.")
-        except FileNotFoundError:
-            print(f"[Instagram] Sessão de @{usuario} não encontrada. Rode: instaloader --login {usuario}")
-            raise
-
-    profile = instaloader.Profile.from_username(loader.context, perfil)
     desde_utc = desde.replace(tzinfo=timezone.utc) if desde.tzinfo is None else desde
 
+    opts = {
+        **_ydl_opts_base(),
+        "extract_flat": True,
+    }
+
+    url = f"https://www.instagram.com/{perfil}/reels/"
+    print(f"[Instagram] Varrendo @{perfil} (usando cookies do Chrome)...")
+
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    entries = info.get("entries", []) if info else []
     videos = []
-    print(f"[Instagram] Varrendo @{perfil}... (pode demorar)")
-    for post in profile.get_posts():
-        if post.date_utc < desde_utc:
-            break
-        if not post.is_video:
+
+    for entry in entries:
+        if not entry:
             continue
+
+        upload_date = entry.get("upload_date") or ""
+        try:
+            post_date = datetime.strptime(upload_date, "%Y%m%d").replace(tzinfo=timezone.utc) if upload_date else None
+        except ValueError:
+            post_date = None
+
+        if post_date and post_date < desde_utc:
+            continue
+
+        video_id = entry.get("id", "")
+        if not video_id:
+            continue
+
         videos.append({
-            "shortcode":  post.shortcode,
-            "views":      post.video_view_count or 0,
-            "caption":    post.caption or "",
-            "data_post":  post.date_utc,
-            "video_url":  post.video_url,
-            "filename":   f"{post.date_utc.strftime('%Y%m%d')}_{post.shortcode}.mp4",
-            "local_path": destino / f"{post.date_utc.strftime('%Y%m%d')}_{post.shortcode}.mp4",
+            "shortcode":  video_id,
+            "views":      entry.get("view_count", 0) or 0,
+            "caption":    entry.get("title", "") or entry.get("description", "") or "",
+            "data_post":  post_date or desde_utc,
+            "video_url":  f"https://www.instagram.com/reel/{video_id}/",
+            "filename":   f"{upload_date or 'sem_data'}_{video_id}.mp4",
+            "local_path": destino / f"{upload_date or 'sem_data'}_{video_id}.mp4",
         })
 
     videos.sort(key=lambda v: v["views"], reverse=True)
@@ -64,8 +76,8 @@ def listar_videos_perfil(
 
 
 def baixar_video(video: dict, destino: Path | None = None) -> Path:
-    """Baixa um único vídeo. Aceita dicts de listar_videos_perfil ou do JSON do servidor."""
-    import requests
+    """Baixa um vídeo usando yt-dlp (mais robusto que requests direto)."""
+    import yt_dlp
 
     if "local_path" in video:
         path = Path(video["local_path"])
@@ -78,9 +90,19 @@ def baixar_video(video: dict, destino: Path | None = None) -> Path:
         return path
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    resp = requests.get(video["video_url"], stream=True, timeout=60)
-    resp.raise_for_status()
-    with open(path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=1024 * 256):
-            f.write(chunk)
+
+    opts = {
+        **_ydl_opts_base(),
+        "outtmpl": str(path.with_suffix("")),
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "merge_output_format": "mp4",
+    }
+
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([video["video_url"]])
+
+    # yt-dlp pode adicionar extensão
+    if not path.exists() and path.with_suffix(".mp4").exists():
+        path = path.with_suffix(".mp4")
+
     return path
