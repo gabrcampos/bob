@@ -37,23 +37,29 @@ def listar_videos_perfil(
     if proc.returncode != 0 and not proc.stdout:
         raise RuntimeError(f"gallery-dl falhou:\n{proc.stderr}")
 
-    # Debug: mostrar primeiras linhas do output
-    linhas = proc.stdout.strip().splitlines()
-    if not linhas:
+    raw = proc.stdout.strip()
+    if not raw:
         print(f"[Debug] Nenhuma saída do gallery-dl. stderr:\n{proc.stderr[:500]}")
-    else:
-        print(f"[Debug] {len(linhas)} linhas recebidas. Primeira:")
-        print(linhas[0][:300])
+        return []
+
+    # gallery-dl --dump-json retorna um array JSON único
+    try:
+        entries = json.loads(raw)
+        if not isinstance(entries, list):
+            entries = [entries]
+    except json.JSONDecodeError:
+        # fallback: uma linha por objeto
+        entries = []
+        for line in raw.splitlines():
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    print(f"[Debug] {len(entries)} entradas. Exemplo: {str(entries[0])[:200]}" if entries else "[Debug] 0 entradas.")
 
     videos = []
-    for line in linhas:
-        if not line.strip():
-            continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
+    for data in entries:
         # gallery-dl retorna listas [version, index, {data}] ou dicts diretos
         if isinstance(data, list):
             data = data[-1] if data else {}
