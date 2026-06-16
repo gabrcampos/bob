@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "bob-videos")
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "bob-videos-487590427215")
 
 
 def _client():

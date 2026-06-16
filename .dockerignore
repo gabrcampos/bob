@@ -1,0 +1,26 @@
+# Ambiente local
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Saídas locais
+outputs/
+
+# Credenciais que NÃO devem ir para a imagem do Cloud Run
+config/service_account.json
+config/drive_token.json
+
+# Repositórios/projetos frontend (não usados pelo worker)
+doisbe-react/
+remotion_project/
+
+# Git
+.git/
+.gitignore
+
+# Docs
+*.md
+instructions.mb

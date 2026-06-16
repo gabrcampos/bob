@@ -235,6 +235,7 @@ def agendar_post(
     data_hora: datetime,
     texto: str = "",
     video_path: str = "",
+    source_id: str = "",
 ) -> str:
     """Cria um agendamento. Retorna o _id como string."""
     doc = {
@@ -244,6 +245,7 @@ def agendar_post(
         "data_hora":        data_hora,
         "texto":            texto,
         "video_path":       video_path,
+        "source_id":        source_id,
         "status":           "pendente",
         "platform_post_id": None,
         "erro_msg":         None,
@@ -252,6 +254,11 @@ def agendar_post(
     }
     result = col_agenda().insert_one(doc)
     return str(result.inserted_id)
+
+
+def ja_agendado(source_id: str) -> bool:
+    """Retorna True se já existe um agendamento com esse source_id."""
+    return col_agenda().count_documents({"source_id": source_id}, limit=1) > 0
 
 
 def atualizar_agendamento(agenda_id: str, campos: dict):
