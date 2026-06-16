@@ -29,7 +29,7 @@ def listar_videos_perfil(
     """
     desde_utc = desde.replace(tzinfo=timezone.utc) if desde.tzinfo is None else desde
 
-    cmd = _gallery_dl_cmd(cookies) + ["--dump-json", f"https://www.instagram.com/{perfil}/"]
+    cmd = _gallery_dl_cmd(cookies) + ["--verbose", "--dump-json", f"https://www.instagram.com/{perfil}/"]
     print(f"[Instagram] Varrendo @{perfil}...")
 
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
