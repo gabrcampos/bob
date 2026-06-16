@@ -37,8 +37,16 @@ def listar_videos_perfil(
     if proc.returncode != 0 and not proc.stdout:
         raise RuntimeError(f"gallery-dl falhou:\n{proc.stderr}")
 
+    # Debug: mostrar primeiras linhas do output
+    linhas = proc.stdout.strip().splitlines()
+    if not linhas:
+        print(f"[Debug] Nenhuma saída do gallery-dl. stderr:\n{proc.stderr[:500]}")
+    else:
+        print(f"[Debug] {len(linhas)} linhas recebidas. Primeira:")
+        print(linhas[0][:300])
+
     videos = []
-    for line in proc.stdout.strip().splitlines():
+    for line in linhas:
         if not line.strip():
             continue
         try:
