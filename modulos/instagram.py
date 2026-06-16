@@ -37,9 +37,10 @@ def listar_videos_perfil(
     if proc.returncode != 0 and not proc.stdout:
         raise RuntimeError(f"gallery-dl falhou:\n{proc.stderr}")
 
+    print(f"[Debug stderr]:\n{proc.stderr[:1000]}")
     raw = proc.stdout.strip()
     if not raw:
-        print(f"[Debug] Nenhuma saída do gallery-dl. stderr:\n{proc.stderr[:500]}")
+        print("[Debug] Nenhuma saída no stdout do gallery-dl.")
         return []
 
     # gallery-dl --dump-json retorna um array JSON único
