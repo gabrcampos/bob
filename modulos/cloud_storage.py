@@ -16,6 +16,9 @@ BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "bob-videos-487590427215")
 
 def _client():
     from google.cloud import storage
+    sa_path = Path("config/service_account.json")
+    if sa_path.exists():
+        return storage.Client.from_service_account_json(str(sa_path))
     return storage.Client()
 
 

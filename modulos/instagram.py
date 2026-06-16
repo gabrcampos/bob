@@ -53,11 +53,17 @@ def listar_videos_perfil(
     return videos
 
 
-def baixar_video(video: dict) -> Path:
-    """Baixa um único vídeo já listado por `listar_videos_perfil`."""
+def baixar_video(video: dict, destino: Path | None = None) -> Path:
+    """Baixa um único vídeo. Aceita dicts de listar_videos_perfil ou do JSON do servidor."""
     import requests
 
-    path: Path = video["local_path"]
+    if "local_path" in video:
+        path = Path(video["local_path"])
+    else:
+        pasta = destino or Path("outputs/instagram")
+        pasta.mkdir(parents=True, exist_ok=True)
+        path = pasta / video["filename"]
+
     if path.exists():
         return path
 
