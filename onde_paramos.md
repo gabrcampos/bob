@@ -1,14 +1,13 @@
 # Onde Paramos
 
-Atualizado em: 16 de junho de 2026
+Atualizado em: 17 de junho de 2026
 
 ---
 
 ## Status geral
 
 Pipeline Instagram → YouTube Shorts 100% funcional, incluindo publicação automática via Cloud Run.
-
-26 vídeos do perfil @fs_negao agendados de 17/06 a 23/06/2026 (2 já publicados hoje).
+27 vídeos do perfil @fs_negao agendados de 17/06 a 23/06/2026 (1 já publicado).
 O Cloud Run publica automaticamente a cada 5 minutos quando chega o horário.
 
 ---
@@ -35,8 +34,9 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 | Cloud Run | `https://bob-worker-487590427215.us-east1.run.app` |
 | Cloud Scheduler | `bob-worker-job` — a cada 5 minutos |
 | Bucket GCS | `gs://bob-videos-487590427215` |
-| Secret Manager | `mongodb-uri` |
-| YouTube OAuth | `config/youtube_token.json` — conta do canal destino |
+| Secret Manager | `mongodb-uri`, `youtube-token` |
+| IP estático do servidor | `35.190.152.94` (fixo, nunca muda) |
+| YouTube OAuth | montado via Secret Manager em `/app/config/youtube_token.json` |
 
 ---
 
@@ -68,7 +68,7 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 
 | Arquivo | O que é | Onde está |
 |---|---|---|
-| `config/youtube_token.json` | OAuth do canal YouTube destino | Servidor + PC local |
+| `config/youtube_token.json` | OAuth do canal YouTube destino | Secret Manager + PC local |
 | `config/service_account.json` | Service Account GCP para GCS | Servidor + PC local |
 | `.env` | MONGODB_URI | Servidor (não está no git) |
 | `cookies.txt` | Cookies do Instagram para scraping | PC local (não está no git) |
