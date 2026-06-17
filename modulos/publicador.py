@@ -39,8 +39,11 @@ def _yt_creds():
                 )
             flow = InstalledAppFlow.from_client_secrets_file(str(_CLIENT_SECRET), _YT_SCOPES)
             creds = flow.run_local_server(port=0)
-        _YT_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _YT_TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+        try:
+            _YT_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _YT_TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+        except OSError:
+            pass  # read-only mount (Cloud Run secret volume)
     return creds
 
 
@@ -55,7 +58,10 @@ def yt_esta_autenticado() -> bool:
             return True
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            _YT_TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+            try:
+                _YT_TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+            except OSError:
+                pass
             return True
     except Exception:
         pass
