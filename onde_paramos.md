@@ -1,14 +1,13 @@
 # Onde Paramos
 
-Atualizado em: 17 de junho de 2026
+Atualizado em: 19 de junho de 2026
 
 ---
 
 ## Status geral
 
 Pipeline Instagram → YouTube Shorts 100% funcional, incluindo publicação automática via Cloud Run.
-27 vídeos do perfil @fs_negao agendados de 17/06 a 23/06/2026 (1 já publicado).
-O Cloud Run publica automaticamente a cada 5 minutos quando chega o horário.
+19 vídeos com agendamentos futuros. O Cloud Run publica automaticamente a cada 5 minutos quando chega o horário.
 
 ---
 
@@ -42,7 +41,7 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 
 ## Horários de postagem
 
-4 posts por dia, nos melhores horários para YouTube Shorts:
+5 posts por dia, nos melhores horários para YouTube Shorts:
 
 | BRT | UTC |
 |---|---|
@@ -50,14 +49,28 @@ Os vídeos já agendados são ignorados automaticamente (deduplicação por shor
 | 12:00 | 15:00 |
 | 17:00 | 20:00 |
 | 21:00 | 00:00 (dia seguinte) |
+| 00:00 | 03:00 (dia seguinte) |
+
+---
+
+## Comportamento do worker
+
+- Após publicar, deleta automaticamente o arquivo do GCS **se não houver mais agendamentos pendentes** usando aquele arquivo
+- Vídeos com múltiplos agendamentos (ex: reposts) são mantidos no bucket até o último post
+
+---
+
+## Agendamentos especiais
+
+- **C_BGSqdRfX9** ("Você se dá bem com criança?") agendado toda terça e sábado às 17h BRT até 14/07/2026
 
 ---
 
 ## Pendências / próximos passos
 
-- [ ] **Automatizar a rotina semanal** — rodar `rotina_listar.py` + `rotina_instagram_youtube.py`
-  toda semana para abastecer a fila com os próximos 28 vídeos
-  (sugestão: toda segunda-feira de manhã)
+- [ ] **Reabastecer a fila** — rodar `rotina_listar.py` + `rotina_instagram_youtube.py` no PC local
+  para agendar os slots de 00h BRT (03:00 UTC) que ainda estão vazios para a semana atual,
+  e agendar a próxima semana completa (5 posts/dia)
 
 - [ ] **Migrar para Instagram Basic Display API** — usar a conta @fs_negao diretamente
   para evitar risco de bloqueio da conta usada hoje para scraping via cookies.txt
@@ -95,4 +108,7 @@ python rotina_listar.py --perfil fs_negao
 
 # Baixar, subir e agendar a partir do JSON (PC local)
 python rotina_instagram_youtube.py --lista lista_fs_negao.json
+
+# Deletar do GCS arquivos sem agendamentos pendentes (servidor)
+# (feito manualmente quando necessário)
 ```
