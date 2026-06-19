@@ -69,6 +69,20 @@ def processar_pendentes():
             publicados += 1
             print(f"[Worker] ✓ {agenda_id}")
 
+            # Apaga do GCS se não há mais agendamentos usando esse arquivo
+            if str(video_path).startswith("gs://"):
+                restantes = col_agenda().count_documents({
+                    "video_path": video_path,
+                    "status": {"$in": ["pendente", "processando"]},
+                })
+                if restantes == 0:
+                    try:
+                        from modulos.cloud_storage import delete_video
+                        delete_video(video_path)
+                        print(f"[GCS] Removido: {video_path}")
+                    except Exception as e:
+                        print(f"[GCS] Falha ao remover {video_path}: {e}", file=sys.stderr)
+
         except Exception as e:
             erros += 1
             atualizar_agendamento(agenda_id, {
