@@ -15,8 +15,9 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SLOTS_UTC = [10, 15, 20, 0]
+SLOTS_UTC = [10, 15, 20, 0, 3]
 POSTS_POR_DIA = len(SLOTS_UTC)
+_SLOT_PROX_DIA = {0, 3}  # madrugada — pertencem ao dia seguinte
 
 
 def proximos_slots(a_partir: datetime, quantidade: int) -> list[datetime]:
@@ -25,7 +26,7 @@ def proximos_slots(a_partir: datetime, quantidade: int) -> list[datetime]:
     while len(slots) < quantidade:
         for hora in SLOTS_UTC:
             candidato = dia.replace(hour=hora)
-            if hora == 0:
+            if hora in _SLOT_PROX_DIA:
                 candidato += timedelta(days=1)
             if candidato > a_partir:
                 slots.append(candidato)
