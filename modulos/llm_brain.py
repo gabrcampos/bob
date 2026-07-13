@@ -96,9 +96,11 @@ Cada slide deve ter:
 - Texto contínuo, fluido para leitura em voz alta
 
 4. LEGENDA (para acompanhar o carrossel na publicação):
-- 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
-- Começa com um gancho ou pergunta que convida o leitor a ver o carrossel
-- Tom direto, sem emojis corporativos, máx 220 palavras
+- Máx 4 frases. Tom profissional e direto, sem aberturas genéricas ("Descubra", "Você sabia que", "No mundo de hoje").
+- Primeira frase assertiva e específica ao tema — foco no insight ou na consequência prática.
+- CTA simples no final: "Link na bio." ou "Fale com um especialista — link na bio."
+- Exatamente 3 hashtags relevantes ao nicho. Sem emojis desnecessários.
+- Máx 100 palavras no total. Em português brasileiro.
 
 Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
 Estrutura exata:
@@ -281,6 +283,98 @@ def salvar_historico(empresa_id: str, tema: str, carrossel: list[dict]):
         for i, s in enumerate(carrossel)
     ]
     salvar_entrada_historico(empresa_id, tema, dados_usados)
+
+
+_CLIQUES_PROIBIDOS = [
+    "apagar incêndio", "apagar incêndios", "modo crise", "no mundo de hoje",
+    "descubra como", "você sabia que", "em um mundo", "cada vez mais",
+    "transformação digital", "na era digital", "disrupção", "inovação disruptiva",
+]
+
+_CTA_POR_EMPRESA = {
+    "deliverydash": "Teste gratuitamente o DeliveryDash por 7 dias - link na bio.",
+    "tecnosolve":   "Fale com um especialista - link na bio.",
+    "nomos":        "Fale com um especialista - link na bio.",
+}
+
+_HASHTAGS_POR_EMPRESA_TIPO = {
+    ("deliverydash", "carrossel_misto_dd"): "#DeliveryDash #GestaoDelivery #DarkKitchen",
+    ("tecnosolve",   "carrossel_tweet"):    "#TecnologiaVarejo #InfraestruturaTI #ERP",
+    ("tecnosolve",   "carrossel"):          "#TecnologiaVarejo #GestaoVarejo #ERP",
+}
+
+
+def _revisar_conteudo(slides: list, legenda: str, empresa_id: str, tipo: str, tema: str) -> tuple[list, str]:
+    """Revisa e corrige conteúdo gerado pelo LLM antes de retornar.
+    Retorna (slides_corrigidos, legenda_corrigida).
+    """
+    avisos = []
+
+    # ── 1. Detectar clichês nos slides ───────────────────────────────────────
+    for s in slides:
+        texto_slide = (s.get("titulo", "") + " " + s.get("texto", "")).lower()
+        for clique in _CLIQUES_PROIBIDOS:
+            if clique in texto_slide:
+                avisos.append(f"[Revisão] Slide {s.get('slide', '?')}: clichê detectado — '{clique}'")
+
+    # ── 2. Verificar tema similar a posts recentes ───────────────────────────
+    try:
+        from modulos.db import col_conteudos
+        recentes = list(col_conteudos().find(
+            {"empresa_id": empresa_id}, {"tema": 1}
+        ).sort("criado_em", -1).limit(10))
+        tema_lower = tema.lower()
+        palavras_tema = set(tema_lower.split())
+        for doc in recentes:
+            tema_rec = doc.get("tema", "").lower()
+            palavras_rec = set(tema_rec.split())
+            overlap = palavras_tema & palavras_rec - {"de", "do", "da", "e", "o", "a", "os", "as", "um", "uma", "para", "com", "que"}
+            if len(overlap) >= 4:
+                avisos.append(f"[Revisão] Tema possivelmente repetido: '{doc.get('tema', '')}' (palavras em comum: {overlap})")
+    except Exception:
+        pass
+
+    # ── 3. Corrigir legenda ──────────────────────────────────────────────────
+    # Remover travessões
+    legenda = legenda.replace(" — ", " ").replace("— ", "").replace(" —", "")
+
+    # Garantir CTA correto
+    cta_correto = _CTA_POR_EMPRESA.get(empresa_id, "")
+    if cta_correto:
+        # Remover qualquer variação de CTA existente antes de adicionar o correto
+        _padroes_cta = [
+            r"Fale com um especialista[^\n#]*",
+            r"Teste gratuitamente[^\n#]*",
+            r"Saiba mais[^\n#]*link na bio[^\n#]*",
+            r"Acesse[^\n#]*link na bio[^\n#]*",
+            r"link na bio\.",
+        ]
+        legenda_sem_cta = legenda
+        for padrao in _padroes_cta:
+            legenda_sem_cta = re.sub(padrao, "", legenda_sem_cta, flags=re.IGNORECASE).strip()
+        # Separar hashtags
+        linhas = legenda_sem_cta.strip().splitlines()
+        hashtag_lines = [l for l in linhas if l.strip().startswith("#")]
+        corpo_lines   = [l for l in linhas if not l.strip().startswith("#")]
+        corpo = "\n".join(corpo_lines).strip()
+        # Garantir hashtags corretas (usar as definidas se existir mapeamento)
+        hashtags_fixas = _HASHTAGS_POR_EMPRESA_TIPO.get((empresa_id, tipo), "")
+        hashtags = hashtags_fixas if hashtags_fixas else "\n".join(hashtag_lines)
+        # Garantir 2 quebras de linha no corpo (pelo menos entre frases)
+        if "\n\n" not in corpo:
+            frases = re.split(r'(?<=[.!?])\s+', corpo)
+            if len(frases) >= 2:
+                meio = len(frases) // 2
+                corpo = "\n\n".join([" ".join(frases[:meio]), " ".join(frases[meio:])])
+        legenda = f"{corpo}\n\n{cta_correto}\n{hashtags}"
+
+    # ── 4. Imprimir avisos ───────────────────────────────────────────────────
+    for aviso in avisos:
+        print(aviso, flush=True)
+    if not avisos:
+        print(f"[Revisão] Conteúdo aprovado para '{tema[:50]}'", flush=True)
+
+    return slides, legenda
 
 
 def _bloco_historico(empresa_id: str, limit: int = 5) -> str:
@@ -764,15 +858,19 @@ def gerar_legenda(
         titulos = [s.get("titulo", "") for s in slides if s.get("titulo")]
         resumo_slides = f"\nTítulos dos slides: {' | '.join(titulos[:6])}"
 
-    prompt = f"""Você é um estrategista de conteúdo B2B.
-Escreva uma legenda curta para acompanhar um carrossel sobre "{tema}" publicado pela empresa {empresa} para {publico_alvo}.
+    prompt = f"""Você é um redator de conteúdo B2B especialista em Instagram.
+Escreva uma legenda para acompanhar um carrossel sobre "{tema}" publicado pela empresa {empresa} para {publico_alvo}.
 {resumo_slides}
 
-A legenda deve:
-- Ter 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
-- Começar com um gancho ou pergunta que convida o leitor a ver o carrossel
-- Tom direto, sem emojis corporativos, máx 220 palavras
-- Ser em português brasileiro
+REGRAS OBRIGATÓRIAS:
+- Máx 4 frases no total. Seja conciso.
+- Primeira frase: assertiva e específica ao tema — sem aberturas genéricas ("Descubra", "Você sabia que", "No mundo de hoje").
+- Tom profissional e direto. Sem informalidades, sem exageros, sem frases motivacionais vazias.
+- Foco no insight ou na consequência prática — o que o leitor ganha ou perde dependendo do que fizer.
+- Uma linha de CTA simples no final: "Link na bio." ou "Fale com um especialista — link na bio." — nada mais elaborado.
+- Exatamente 3 hashtags relevantes ao nicho. Nada mais.
+- Sem emojis, a não ser que sejam absolutamente funcionais (ex: ✅ para listas).
+- Máx 100 palavras no total. Em português brasileiro.
 
 Responda APENAS com o texto da legenda, sem explicações."""
     return _gerar_texto_simples(prompt)
@@ -941,9 +1039,11 @@ Cada slide deve ter:
 - "prompt_imagem": descrição objetiva em inglês da cena de fundo (1-2 frases). REGRAS: (a) cenas físicas concretas, visualmente distintas entre slides; (b) PROIBIDO qualquer texto, letras, números ou elementos tipográficos; (c) vazio ("") no slide 6.
 
 Gere também uma legenda para acompanhar o carrossel na publicação:
-- 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
-- Começa com um gancho ou pergunta que convida o leitor a ver o carrossel
-- Tom direto, sem emojis corporativos, máx 220 palavras
+- Máx 4 frases. Tom profissional e direto, sem aberturas genéricas ("Descubra", "Você sabia que", "No mundo de hoje").
+- Primeira frase assertiva e específica ao tema — foco no insight ou na consequência prática.
+- CTA simples no final: "Link na bio." ou "Fale com um especialista — link na bio."
+- Exatamente 3 hashtags relevantes ao nicho. Sem emojis desnecessários.
+- Máx 100 palavras no total.
 
 Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
 Estrutura exata:
@@ -1005,7 +1105,9 @@ def gerar_carrossel_tweet(
             conteudo = _parse_json(_text)
             slides = conteudo.get("carrossel", [])
             if slides:
-                return {"slides": slides, "legenda": conteudo.get("legenda", "")}
+                legenda = conteudo.get("legenda", "")
+                slides, legenda = _revisar_conteudo(slides, legenda, empresa_id, "carrossel_tweet", tema)
+                return {"slides": slides, "legenda": legenda}
             raise ValueError("JSON retornado sem campo 'carrossel'")
         except Exception as e:
             _verificar_erro_faturamento(e)
@@ -1024,7 +1126,7 @@ Slide 2 — Contexto: apresente o problema de forma conceitual. Título curto + 
 Slide 3 — Causa Raiz: por que o problema persiste. Título curto + texto (1-2 frases diretas, máx 25 palavras, SEM BULLET POINTS, sem listas, texto corrido simples, foco na ideia central sem dados). prompt_imagem: cena física concreta que ilustre a causa — OBRIGATÓRIO: pessoas ou objetos físicos reais, ABSOLUTAMENTE PROIBIDO qualquer tela, monitor, tablet, smartphone, interface digital, dashboard, mapa ou elemento com texto/UI visível.
 Slide 4 — Impactos: liste 3 a 5 consequências operacionais conceituais usando EXATAMENTE o formato ✗ (um por linha, iniciando com ✗ seguido de espaço e o texto, máx 10 palavras por item). SEM números, percentuais ou fontes — apenas os conceitos e impactos. prompt_imagem: cena de ambiente impactado negativamente.
 Slide 5 — A Virada: destaque o insight específico que muda a perspectiva sobre o tema central — não um princípio genérico aplicável a qualquer negócio. Título assertivo (máx 4 palavras) + texto (1-2 frases diretas, máx 25 palavras) que nomeie a mudança de abordagem específica para este problema. SEM BULLET POINTS, sem listas, texto corrido, SEM dados. Sem imagem (prompt_imagem vazio).
-Slide 6 — O que Funciona: liste 3 a 5 resultados ou transformações concretas que o público-alvo obtém ao resolver o problema — escritos como benefícios vividos, não como nomes de funcionalidades. Use EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). Exemplo do nível esperado: em vez de "Monitoramento em tempo real", escreva "Cancela menos, porque age antes do problema escalar". prompt_imagem: cena positiva/produtiva.
+Slide 6 — O que Funciona: título FIXO e obrigatório "DeliveryDash" (exatamente assim, sem variações). liste 3 a 5 resultados ou transformações concretas que o público-alvo obtém ao resolver o problema — escritos como benefícios vividos, não como nomes de funcionalidades. Use EXATAMENTE o formato ✓ (um por linha, iniciando com ✓ seguido de espaço e o texto, máx 10 palavras por item). Exemplo do nível esperado: em vez de "Monitoramento em tempo real", escreva "Cancela menos, porque age antes do problema escalar". prompt_imagem: cena positiva/produtiva.
 Slide 7 — Antes vs Depois: o campo "texto" deve ter EXATAMENTE este formato: "ANTES: [descrição do estado problemático em 1 frase]\n---\nDEPOIS: [descrição do estado melhorado em 1 frase]". SEM dados ou fontes — foque na transformação conceitual. O título deve ser o tema central da comparação (máx 6 palavras). prompt_imagem: cena de transformação ou ambiente melhorado.
 Slide 8 — CTA: título fixo "SE VOCÊ QUER UMA OPERAÇÃO 5 ESTRELAS, TESTE AGORA O DELIVERYDASH." + texto (descrição gerada, 1-2 frases, máx 25 palavras). prompt_imagem: um prato delicioso de restaurante profissional.
 """
@@ -1045,9 +1147,11 @@ Cada slide deve ter:
 - "prompt_imagem": descrição objetiva em inglês do que deve aparecer na imagem de fundo (1-2 frases). REGRAS OBRIGATÓRIAS: (a) cenas visualmente distintas entre slides; (b) cenas físicas concretas com pessoas, objetos ou ambientes reais; (c) ABSOLUTAMENTE PROIBIDO: qualquer texto, letras, números, letreiros, telas com escrita ou elementos tipográficos; (d) deixe vazio ("") no slide 5.
 
 Gere também uma legenda para acompanhar o carrossel na publicação:
-- 2 a 4 frases que complementam o carrossel sem repetir o que já está nos slides
-- Começa com um gancho ou pergunta que convida o leitor a ver o carrossel
-- Tom direto, sem emojis corporativos, máx 220 palavras
+- Máx 4 frases. Tom profissional e direto, sem aberturas genéricas ("Descubra", "Você sabia que", "No mundo de hoje").
+- Primeira frase assertiva e específica ao tema — foco no insight ou na consequência prática.
+- CTA simples no final: "Link na bio." ou "Fale com um especialista — link na bio."
+- Exatamente 3 hashtags relevantes ao nicho. Sem emojis desnecessários.
+- Máx 100 palavras no total.
 
 Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
 Estrutura exata:
@@ -1058,6 +1162,34 @@ Estrutura exata:
   ],
   "legenda": "..."
 }}"""
+
+
+_DD_BULLETS_SLIDE6 = [
+    "Interface simples.",
+    "Dashboard atualizado a cada 30 segundos.",
+    "Alertas automáticos até 15 min antes do problema.",
+    "Pedidos organizados por urgência, não por chegada.",
+    "Visibilidade de todas as marcas em uma única tela.",
+    "Integração nativa com iFood sem configuração manual.",
+    "Gestão de múltiplas unidades em um só lugar.",
+    "Previne avaliações negativas antes que aconteçam.",
+    "Dados em tempo real para decisões mais rápidas.",
+    "Histórico completo para auditar qualquer pedido.",
+    "Pedidos priorizados automaticamente por criticidade.",
+    "Relatórios que permitem agir, não só analisar.",
+]
+
+
+def _aplicar_slide6_dd_fixo(slides: list) -> None:
+    """Sobrescreve slide 6 do carrossel_misto_dd com bullets fixos sortados do pool."""
+    import random
+    bullets = random.sample(_DD_BULLETS_SLIDE6, 5)
+    texto = "\n".join(f"✓ {b}" for b in bullets)
+    for s in slides:
+        if int(s.get("slide", 0)) == 6:
+            s["titulo"] = "DeliveryDash"
+            s["texto"] = texto
+            return
 
 
 def gerar_carrossel_misto_dd(
@@ -1111,7 +1243,10 @@ def gerar_carrossel_misto_dd(
             conteudo = _parse_json(_text)
             slides = conteudo.get("slides", [])
             if slides:
-                return {"slides": slides, "legenda": conteudo.get("legenda", "")}
+                _aplicar_slide6_dd_fixo(slides)
+                legenda = conteudo.get("legenda", "")
+                slides, legenda = _revisar_conteudo(slides, legenda, empresa_id, "carrossel_misto_dd", tema)
+                return {"slides": slides, "legenda": legenda}
             raise ValueError("JSON retornado sem campo 'slides'")
         except Exception as e:
             _verificar_erro_faturamento(e)
@@ -1263,9 +1398,12 @@ Cada slide deve ter:
 - "texto_botao": apenas para o slide 9 (padrão: "CADASTRE-SE AGORA"). Nos demais slides, omita este campo ou deixe vazio.
 - "prompt_imagem": descrição objetiva em inglês da cena de fundo (1-2 frases). REGRAS DE IMAGEM: OBRIGATÓRIO focar em cenas rotineiras de pessoas que tomam decisões de governo (escritórios, plenários, tribunais, gabinetes legislativos) para gerar forte identificação. PROIBIDO usar texto, letras ou números na imagem.
 
-Gere também uma legenda:
-- 2 a 4 frases complementares ao carrossel.
-- Tom direto, máx 220 palavras.
+Gere também uma legenda para acompanhar o carrossel na publicação:
+- Máx 4 frases. Tom profissional e direto, sem aberturas genéricas ("Descubra", "Você sabia que", "No mundo de hoje").
+- Primeira frase assertiva e específica ao tema — foco no insight ou na consequência prática.
+- CTA simples no final: "Link na bio." ou "Fale com um especialista — link na bio."
+- Exatamente 3 hashtags relevantes ao nicho. Sem emojis desnecessários.
+- Máx 100 palavras no total.
 
 Responda SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.
 Estrutura exata:

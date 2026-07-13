@@ -115,18 +115,23 @@ def _get_client() -> genai.Client:
 
 def _quebrar_texto(texto: str, fonte: ImageFont.FreeTypeFont,
                    largura: int, draw: ImageDraw.ImageDraw) -> list[str]:
-    linhas, linha = [], ""
-    for palavra in texto.split():
-        candidato = f"{linha} {palavra}".strip()
-        if draw.textbbox((0, 0), candidato, font=fonte)[2] <= largura:
-            linha = candidato
-        else:
-            if linha:
-                linhas.append(linha)
-            linha = palavra
-    if linha:
-        linhas.append(linha)
-    return linhas
+    result = []
+    for paragrafo in texto.split("\n"):
+        if not paragrafo.strip():
+            result.append("")
+            continue
+        linha = ""
+        for palavra in paragrafo.split():
+            candidato = f"{linha} {palavra}".strip()
+            if draw.textbbox((0, 0), candidato, font=fonte)[2] <= largura:
+                linha = candidato
+            else:
+                if linha:
+                    result.append(linha)
+                linha = palavra
+        if linha:
+            result.append(linha)
+    return result or [""]
 
 
 # Slides que usam bullet points (afeta compor_slide e compor_slide_tweet)
@@ -145,7 +150,7 @@ def _linhas_bullet(
     O prefixo é '✓', '✗' ou '' para linhas de continuação."""
     import re
     # Normaliza bullets inline ("; ✓ " ou "; ✗ ") para quebras de linha
-    texto = re.sub(r"[;,]?\s*([✓✗•*-])\s*", lambda m: "\n" + m.group(1) + " ", texto)
+    texto = re.sub(r"[;,]?\s*(?<!\w)([✓✗•*-])(?!\w)\s*", lambda m: "\n" + m.group(1) + " ", texto)
     result: list[tuple[str, str]] = []
     items = [l.strip() for l in texto.split("\n") if l.strip()]
     for item in items:
@@ -2327,7 +2332,7 @@ def gerar_imagens_carrossel_tweet(
     empresa_nome: str,
     stem: str,
     identidade_visual: dict,
-    logo_index: int = 1,
+    logo_index: int = 2,
     cor_circulo_hex: str = "#1d9bf0",
     callback: callable = None,
 ) -> list[Path]:
@@ -2394,7 +2399,7 @@ def gerar_imagem_slide_tweet(
     empresa_nome: str,
     stem: str,
     identidade_visual: dict,
-    logo_index: int = 1,
+    logo_index: int = 2,
     cor_circulo_hex: str = "#1d9bf0",
     fundo_fixo: bool = False,
 ) -> Path:
@@ -2936,7 +2941,7 @@ def compor_slide_misto_dd(
             if prefix in ("✓", "✗", "•"):
                 cor_p  = (100, 220, 120) if prefix == "✓" else (255, 100, 100) if prefix == "✗" else BRANCO
                 # Tenta desenhar asset PNG
-                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD_LEFT, y, 36)
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD_LEFT, y, 36, y_offset=11)
                 if png_ok:
                     _last_indent = 43
                 else:
@@ -3126,7 +3131,7 @@ def compor_slide_misto_dd(
             if prefix in ("✓", "✗", "•"):
                 cor_p = (120, 255, 140) if prefix == "✓" else (255, 100, 100) if prefix == "✗" else BRANCO
                 # Tenta desenhar asset PNG
-                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40)
+                png_ok = _tentar_desenhar_asset_simbolo(canvas, prefix, PAD, y, 40, y_offset=8)
                 if png_ok:
                     # Asset foi desenhado
                     pw = 48
@@ -3331,6 +3336,41 @@ def compor_slide_misto_dd(
         return canvas
 
 
+_DD_CONTEXT_KEYWORDS = frozenset({
+    "restaurant", "restaurante", "chef", "kitchen", "cozinha",
+    "motoboy", "entregador", "delivery", "food", "comida", "prato",
+    "dark kitchen", "cook", "cozinheiro", "garçom", "waiter",
+})
+
+def _prompt_tem_contexto_dd(prompt: str) -> bool:
+    lower = prompt.lower()
+    return any(k in lower for k in _DD_CONTEXT_KEYWORDS)
+
+def _reescrever_prompt_dd(prompt: str, slide_num: int) -> str:
+    """Usa Gemini Flash para reescrever prompt sem contexto de restaurante."""
+    client = _get_client()
+    instrucao = (
+        "Rewrite the following image prompt so that the scene takes place in a restaurant, "
+        "dark kitchen, or food delivery context. "
+        "Keep the original emotion and situation but replace generic elements with: "
+        "restaurant interior, kitchen, chef, cook, motoboy (delivery rider), food orders, dishes. "
+        "Always mention at least one of: restaurant, chef, motoboy, kitchen, food delivery. "
+        "Reply with only the new prompt in English, no explanations.\n\n"
+        f"Original prompt: {prompt}"
+    )
+    try:
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=instrucao,
+        )
+        new_prompt = resp.text.strip()
+        print(f"[MistoDD] Prompt slide {slide_num} reescrito: {new_prompt[:80]}...")
+        return new_prompt
+    except Exception as e:
+        print(f"[MistoDD] Falha ao reescrever prompt slide {slide_num}: {e} — usando original")
+        return prompt
+
+
 def _gerar_fundo_misto_dd(slide: dict, identidade_visual: dict) -> bytes | None:
     """Gera imagem IA para um slide do Carrossel Misto DD. Retorna None se falhar."""
     n = int(slide.get("slide", 0))
@@ -3338,7 +3378,10 @@ def _gerar_fundo_misto_dd(slide: dict, identidade_visual: dict) -> bytes | None:
         prompt_imagem = "close shot from above of a professional plate of a great restaurant "
     else:
         prompt_imagem = slide.get("prompt_imagem") or slide.get("titulo", "")
-        
+        if prompt_imagem and not _prompt_tem_contexto_dd(prompt_imagem):
+            print(f"[MistoDD] Slide {n}: prompt sem contexto de restaurante — reescrevendo...")
+            prompt_imagem = _reescrever_prompt_dd(prompt_imagem, n)
+
     if not prompt_imagem:
         return None
     estilo = identidade_visual.get("estilo_imagem", "")
