@@ -18,20 +18,37 @@ from googleapiclient.http import MediaFileUpload
 
 
 def _drive_client():
-    with open("config/youtube_token.json") as f:
-        yt = json.load(f)
     from google.oauth2.credentials import Credentials
     import googleapiclient.discovery
-    # token=None: a biblioteca auto-renova via refresh_token (funciona sem gcloud CLI)
-    creds = Credentials(
-        token=None, refresh_token=yt["refresh_token"], token_uri=yt["token_uri"],
-        client_id=yt["client_id"], client_secret=yt["client_secret"],
-        scopes=["https://www.googleapis.com/auth/drive"],
-    )
-    return googleapiclient.discovery.build("drive", "v3", credentials=creds)
 
+    # Tenta refresh_token do youtube_token.json primeiro
+    try:
+        with open("config/youtube_token.json") as f:
+            yt = json.load(f)
+        creds = Credentials(
+            token=None, refresh_token=yt["refresh_token"], token_uri=yt["token_uri"],
+            client_id=yt["client_id"], client_secret=yt["client_secret"],
+            scopes=["https://www.googleapis.com/auth/drive"],
+        )
+        # Força refresh imediato para detectar token inválido antes de usar
+        import google.auth.transport.requests
+        creds.refresh(google.auth.transport.requests.Request())
+        return googleapiclient.discovery.build("drive", "v3", credentials=creds)
+    except Exception:
+        # Fallback: gcloud auth (disponível localmente)
+        token = subprocess.check_output(["gcloud", "auth", "print-access-token"]).decode().strip()
+        return googleapiclient.discovery.build("drive", "v3", credentials=Credentials(token=token))
+
+
+# Logo index padrão por (empresa_id, tipo) — sobrepõe qualquer valor passado externamente
+_LOGO_INDEX_FIXO = {
+    ("tecnosolve", "carrossel_tweet"): 2,
+}
 
 def gerar_e_subir(empresa_id: str, tipo: str, tema: str, logo_index: int = 1):
+    # Aplica regra fixa de logo antes de qualquer outra lógica
+    logo_index = _LOGO_INDEX_FIXO.get((empresa_id, tipo), logo_index)
+
     emp = buscar_empresa(empresa_id)
     if not emp:
         raise ValueError(f"Empresa '{empresa_id}' não encontrada")

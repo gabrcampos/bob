@@ -7,7 +7,7 @@ from pydantic import BaseModel
 class AgendamentoCreate(BaseModel):
     conteudo_id: str
     empresa_id: str
-    plataforma: Literal["youtube_shorts", "tiktok"]
+    plataforma: Literal["youtube_shorts", "tiktok", "instagram"]
     data_hora: datetime
     texto: str = ""
     video_path: str = ""
@@ -18,7 +18,7 @@ class AgendamentoLoteCreate(BaseModel):
 
 
 class AgendamentoUpdate(BaseModel):
-    plataforma: Optional[Literal["youtube_shorts", "tiktok"]] = None
+    plataforma: Optional[Literal["youtube_shorts", "tiktok", "instagram"]] = None
     data_hora: Optional[datetime] = None
     texto: Optional[str] = None
     video_path: Optional[str] = None

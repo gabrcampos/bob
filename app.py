@@ -1641,6 +1641,87 @@ elif st.session_state.view == "empresas":
                     st.success("Empresa removida.")
                     st.rerun()
 
+                # ── Credenciais Instagram ─────────────────────
+                st.divider()
+                st.markdown("**Instagram**")
+                ig_atual = emp.get("instagram") or {}
+                from modulos.instagram_publisher import ig_esta_autenticado as _ig_auth
+                if _ig_auth(emp):
+                    st.success(f"Conectado — IG User ID: `{ig_atual.get('ig_user_id')}`")
+                    if st.button("Desconectar Instagram", key=f"ig_disc_{emp['id']}"):
+                        from modulos.db import atualizar_empresa as _atualizar_empresa
+                        _atualizar_empresa(emp["id"], {"instagram": {}})
+                        st.success("Desconectado.")
+                        st.rerun()
+                else:
+                    st.caption(
+                        "Para conectar, você precisa de um **User Access Token** do Meta. "
+                        "Gere em [Graph API Explorer](https://developers.facebook.com/tools/explorer) "
+                        "com as permissões: `pages_show_list`, `instagram_basic`, `instagram_content_publish`."
+                    )
+                    with st.form(key=f"form_ig_{i}"):
+                        ig_token_curto = st.text_input(
+                            "User Access Token (curto prazo)",
+                            type="password",
+                            placeholder="EAAxxxxxxxx...",
+                        )
+                        ig_app_id = st.text_input(
+                            "App ID (Meta)",
+                            placeholder="Ex: 1234567890",
+                            help="ID do seu aplicativo Meta. Encontre em developers.facebook.com → Meus Apps.",
+                        )
+                        ig_app_secret = st.text_input(
+                            "App Secret",
+                            type="password",
+                            placeholder="Ex: abc123...",
+                        )
+                        buscar_paginas_btn = st.form_submit_button("Buscar páginas do Facebook")
+
+                    if buscar_paginas_btn and ig_token_curto:
+                        from modulos.instagram_publisher import buscar_paginas_facebook as _buscar_pags
+                        try:
+                            _paginas = _buscar_pags(ig_token_curto)
+                            if not _paginas:
+                                st.error("Nenhuma página encontrada. Verifique se o token tem permissão `pages_show_list`.")
+                            else:
+                                st.session_state[f"ig_paginas_{emp['id']}"] = _paginas
+                                st.session_state[f"ig_token_curto_{emp['id']}"] = ig_token_curto
+                                st.session_state[f"ig_app_id_{emp['id']}"] = ig_app_id
+                                st.session_state[f"ig_app_secret_{emp['id']}"] = ig_app_secret
+                                st.rerun()
+                        except Exception as _e:
+                            st.error(f"Erro ao buscar páginas: {_e}")
+
+                    _paginas_sess = st.session_state.get(f"ig_paginas_{emp['id']}")
+                    if _paginas_sess:
+                        _opcoes_pag = {f"{p['page_name']} ({p['page_id']})": p["page_id"] for p in _paginas_sess}
+                        _sel_pag = st.selectbox(
+                            "Selecione a página vinculada à conta Instagram",
+                            list(_opcoes_pag.keys()),
+                            key=f"ig_pag_sel_{emp['id']}",
+                        )
+                        _page_id_sel = _opcoes_pag[_sel_pag]
+                        if st.button("Conectar esta página", type="primary", key=f"ig_conn_{emp['id']}"):
+                            from modulos.instagram_publisher import conectar_instagram as _conectar
+                            from modulos.db import atualizar_empresa as _atualizar_empresa
+                            try:
+                                _cred = _conectar(
+                                    user_access_token=st.session_state[f"ig_token_curto_{emp['id']}"],
+                                    page_id=_page_id_sel,
+                                    app_id=st.session_state[f"ig_app_id_{emp['id']}"],
+                                    app_secret=st.session_state[f"ig_app_secret_{emp['id']}"],
+                                )
+                                _atualizar_empresa(emp["id"], {
+                                    "instagram.ig_user_id": _cred["ig_user_id"],
+                                    "instagram.access_token": _cred["access_token"],
+                                })
+                                for _k in [f"ig_paginas_{emp['id']}", f"ig_token_curto_{emp['id']}", f"ig_app_id_{emp['id']}", f"ig_app_secret_{emp['id']}"]:
+                                    st.session_state.pop(_k, None)
+                                st.success(f"Instagram conectado! IG User ID: `{_cred['ig_user_id']}`")
+                                st.rerun()
+                            except Exception as _e:
+                                st.error(f"Erro ao conectar: {_e}")
+
                 # ── Logos da empresa ──────────────────────────
                 st.divider()
                 col_logo1_hdr, col_logo2_hdr = st.columns(2)
@@ -1883,13 +1964,14 @@ elif st.session_state.view == "agenda":
     _PLAT_ICON = {
         "youtube_shorts": "▶ YouTube Shorts",
         "tiktok":         "♪ TikTok",
+        "instagram":      "📷 Instagram",
     }
 
     # ── Filtros ──────────────────────────────────────────────
     col_f1, col_f2, col_f3 = st.columns(3)
     nomes_emp = ["Todas"] + [e["nome"] for e in empresas]
     filtro_emp = col_f1.selectbox("Empresa", nomes_emp, key="ag_emp")
-    filtro_plat = col_f2.selectbox("Plataforma", ["Todas", "youtube_shorts", "tiktok"], key="ag_plat")
+    filtro_plat = col_f2.selectbox("Plataforma", ["Todas", "youtube_shorts", "tiktok", "instagram"], key="ag_plat")
     filtro_status = col_f3.selectbox("Status", ["Todos", "pendente", "processando", "publicado", "erro"], key="ag_status")
 
     emp_id_filtro = None
@@ -1967,34 +2049,59 @@ elif st.session_state.view == "agenda":
             ag_emp_novo = st.selectbox("Empresa", nomes_n, key="ag_novo_emp")
             emp_novo = next(e for e in empresas if e["nome"] == ag_emp_novo)
 
-            docs_vid = db.listar_conteudos(emp_novo["id"], "video", limit=50)
-            if not docs_vid:
-                st.info("Nenhum conteúdo de vídeo gerado para esta empresa.")
+            ag_plat_novo = st.selectbox(
+                "Plataforma",
+                ["youtube_shorts", "tiktok", "instagram"],
+                key="ag_novo_plat",
+            )
+            ag_data = st.date_input("Data", key="ag_novo_data")
+            ag_hora = st.time_input("Hora (UTC)", key="ag_novo_hora")
+            ag_texto = st.text_area("Título / Legenda", key="ag_novo_texto", height=80)
+
+            conteudo_id_novo = None
+            ag_video_path = ""
+
+            if ag_plat_novo == "instagram":
+                _tipos_carrossel = ["carrossel", "carrossel_misto_dd", "carrossel_tweet", "carrossel_oldschool"]
+                _docs_carr = []
+                for _t in _tipos_carrossel:
+                    _docs_carr.extend(db.listar_conteudos(emp_novo["id"], _t, limit=20))
+                _docs_carr.sort(key=lambda d: d.get("criado_em", ""), reverse=True)
+                if not _docs_carr:
+                    st.info("Nenhum carrossel gerado para esta empresa.")
+                else:
+                    from modulos.instagram_publisher import ig_esta_autenticado
+                    if not ig_esta_autenticado(emp_novo):
+                        st.warning("Configure as credenciais Instagram desta empresa em Configurar Empresas.")
+                    opcoes_carr = {f"{d['tema'][:60]} ({d['tipo']}, {d['_id'][-6:]})": d["_id"] for d in _docs_carr}
+                    sel_carr = st.selectbox("Carrossel", list(opcoes_carr.keys()), key="ag_novo_carr")
+                    conteudo_id_novo = opcoes_carr[sel_carr]
             else:
-                opcoes_vid = {f"{d['tema'][:60]} ({d['_id'][-6:]})": d["_id"] for d in docs_vid}
-                sel_vid = st.selectbox("Conteúdo (vídeo)", list(opcoes_vid.keys()), key="ag_novo_vid")
-                conteudo_id_novo = opcoes_vid[sel_vid]
-
-                ag_plat_novo = st.selectbox("Plataforma", ["youtube_shorts", "tiktok"], key="ag_novo_plat")
-                ag_data = st.date_input("Data", key="ag_novo_data")
-                ag_hora = st.time_input("Hora (UTC)", key="ag_novo_hora")
-                ag_texto = st.text_area("Título / Legenda", key="ag_novo_texto", height=80)
-                ag_video_path = st.text_input("Caminho do vídeo (local ou gs://)", key="ag_novo_path",
-                                              placeholder="outputs/.../video.mp4  ou  gs://bob-videos/...")
-
-                if st.button("Agendar", type="primary", key="ag_novo_btn"):
-                    from datetime import datetime as _dt
-                    data_hora_nova = _dt.combine(ag_data, ag_hora)
-                    db.agendar_post(
-                        conteudo_id=conteudo_id_novo,
-                        empresa_id=emp_novo["id"],
-                        plataforma=ag_plat_novo,
-                        data_hora=data_hora_nova,
-                        texto=ag_texto,
-                        video_path=ag_video_path,
+                docs_vid = db.listar_conteudos(emp_novo["id"], "video", limit=50)
+                if not docs_vid:
+                    st.info("Nenhum conteúdo de vídeo gerado para esta empresa.")
+                else:
+                    opcoes_vid = {f"{d['tema'][:60]} ({d['_id'][-6:]})": d["_id"] for d in docs_vid}
+                    sel_vid = st.selectbox("Conteúdo (vídeo)", list(opcoes_vid.keys()), key="ag_novo_vid")
+                    conteudo_id_novo = opcoes_vid[sel_vid]
+                    ag_video_path = st.text_input(
+                        "Caminho do vídeo (local ou gs://)", key="ag_novo_path",
+                        placeholder="outputs/.../video.mp4  ou  gs://bob-videos/...",
                     )
-                    st.success("Agendado com sucesso!")
-                    st.rerun()
+
+            if conteudo_id_novo and st.button("Agendar", type="primary", key="ag_novo_btn"):
+                from datetime import datetime as _dt
+                data_hora_nova = _dt.combine(ag_data, ag_hora)
+                db.agendar_post(
+                    conteudo_id=conteudo_id_novo,
+                    empresa_id=emp_novo["id"],
+                    plataforma=ag_plat_novo,
+                    data_hora=data_hora_nova,
+                    texto=ag_texto,
+                    video_path=ag_video_path,
+                )
+                st.success("Agendado com sucesso!")
+                st.rerun()
 
 else:
     # Fallback to default view if state is invalid

@@ -67,3 +67,22 @@ def url_publica(gcs_uri: str, expiracao_horas: int = 1) -> str:
         expiration=timedelta(hours=expiracao_horas),
         method="GET",
     )
+
+
+def upload_imagem_publica(local_path: str | Path, blob_name: str, expiracao_horas: int = 1) -> str:
+    """
+    Faz upload de uma imagem (PNG/JPEG) para o GCS e retorna uma URL assinada.
+    Usada para hospedar temporariamente slides de carrossel antes de publicar no Instagram.
+    """
+    import mimetypes
+    client = _client()
+    bucket = client.bucket(BUCKET_NAME)
+    local_path = Path(local_path)
+    content_type, _ = mimetypes.guess_type(str(local_path))
+    content_type = content_type or "image/png"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(str(local_path), content_type=content_type)
+    return blob.generate_signed_url(
+        expiration=timedelta(hours=expiracao_horas),
+        method="GET",
+    )

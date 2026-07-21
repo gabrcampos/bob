@@ -236,6 +236,7 @@ def agendar_post(
     texto: str = "",
     video_path: str = "",
     source_id: str = "",
+    imagens_paths: list[str] | None = None,
 ) -> str:
     """Cria um agendamento. Retorna o _id como string."""
     doc = {
@@ -246,6 +247,7 @@ def agendar_post(
         "texto":            texto,
         "video_path":       video_path,
         "source_id":        source_id,
+        "imagens_paths":    imagens_paths or [],
         "status":           "pendente",
         "platform_post_id": None,
         "erro_msg":         None,
@@ -334,6 +336,17 @@ def atualizar_empresa(empresa_id: str, campos: dict):
 
 def deletar_empresa(empresa_id: str):
     col_empresas().delete_one({"id": empresa_id})
+
+
+def buscar_credencial_instagram(empresa_id: str) -> dict | None:
+    """Retorna {'ig_user_id': ..., 'access_token': ...} ou None se não configurado."""
+    doc = col_empresas().find_one({"id": empresa_id}, {"instagram": 1})
+    if not doc:
+        return None
+    ig = doc.get("instagram") or {}
+    if ig.get("ig_user_id") and ig.get("access_token"):
+        return {"ig_user_id": ig["ig_user_id"], "access_token": ig["access_token"]}
+    return None
 
 
 def salvar_contexto_empresa(empresa_id: str, contexto: str):
