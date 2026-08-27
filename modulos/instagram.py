@@ -52,12 +52,39 @@ def listar_videos_perfil(
     destino: Path,
     usuario: str | None = None,
     cookies: str | None = None,
+    user_id: str | None = None,
 ) -> list[dict]:
     desde_utc = desde.replace(tzinfo=timezone.utc) if desde.tzinfo is None else desde
     session = _session(cookies)
 
-    print(f"[Instagram] Buscando user_id de @{perfil}...")
-    user_id = _user_id(session, perfil)
+    if user_id:
+        print(f"[Instagram] Usando user_id fornecido: {user_id}")
+    else:
+        # Tenta via ds_user_id nos cookies (se cookies são do próprio perfil)
+        try:
+            import http.cookiejar as _cj
+            _jar = _cj.MozillaCookieJar()
+            if cookies and Path(cookies).exists():
+                _jar.load(cookies, ignore_discard=True, ignore_expires=True)
+            _ds = next((c.value for c in _jar if c.name == "ds_user_id"), None)
+            if _ds:
+                # Verifica se o feed retorna posts do perfil alvo
+                _r = session.get(
+                    f"https://www.instagram.com/api/v1/feed/user/{_ds}/",
+                    params={"count": 1}, timeout=15,
+                )
+                if _r.ok:
+                    _items = _r.json().get("items", [])
+                    if _items and _items[0].get("user", {}).get("username") == perfil:
+                        user_id = _ds
+                        print(f"[Instagram] user_id via cookies: {user_id}")
+        except Exception:
+            pass
+
+    if not user_id:
+        print(f"[Instagram] Buscando user_id de @{perfil}...")
+        user_id = _user_id(session, perfil)
+
     print(f"[Instagram] user_id: {user_id} — varrendo posts...")
 
     videos = []
@@ -70,14 +97,20 @@ def listar_videos_perfil(
         if max_id:
             params["max_id"] = max_id
 
-        resp = session.get(
-            f"https://www.instagram.com/api/v1/feed/user/{user_id}/",
-            params=params,
-            headers={"Referer": f"https://www.instagram.com/{perfil}/"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = session.get(
+                f"https://www.instagram.com/api/v1/feed/user/{user_id}/",
+                params=params,
+                headers={"Referer": f"https://www.instagram.com/{perfil}/"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            if pagina > 1:
+                print(f"[Instagram] Página {pagina}: erro ({e}) — retornando {len(videos)} vídeos coletados.")
+                break
+            raise
 
         items = data.get("items", [])
         if not items:

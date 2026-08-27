@@ -19,6 +19,7 @@ def processar_pendentes():
     pendentes = list(col_agenda().find({
         "status": "pendente",
         "data_hora": {"$lte": agora},
+        "plataforma": {"$in": ["youtube_shorts", "tiktok"]},
     }))
 
     if not pendentes:

@@ -258,9 +258,13 @@ def agendar_post(
     return str(result.inserted_id)
 
 
-def ja_agendado(source_id: str) -> bool:
-    """Retorna True se já existe um agendamento com esse source_id."""
-    return col_agenda().count_documents({"source_id": source_id}, limit=1) > 0
+def ja_agendado(source_id: str, plataforma: str | None = None) -> bool:
+    """Retorna True se já existe um agendamento com esse source_id.
+    Se plataforma for informada, verifica apenas nessa plataforma."""
+    filtro: dict = {"source_id": source_id}
+    if plataforma:
+        filtro["plataforma"] = plataforma
+    return col_agenda().count_documents(filtro, limit=1) > 0
 
 
 def atualizar_agendamento(agenda_id: str, campos: dict):

@@ -69,6 +69,25 @@ def url_publica(gcs_uri: str, expiracao_horas: int = 1) -> str:
     )
 
 
+def upload_imagem_permanente(local_path: str | Path, blob_name: str) -> str:
+    """
+    Faz upload de imagem para o GCS com acesso público permanente.
+    Retorna URL pública no formato https://storage.googleapis.com/BUCKET/blob.
+    """
+    import mimetypes
+    client = _client()
+    bucket = client.bucket(BUCKET_NAME)
+    local_path = Path(local_path)
+    content_type, _ = mimetypes.guess_type(str(local_path))
+    content_type = content_type or "image/png"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(str(local_path), content_type=content_type)
+    blob.make_public()
+    url = f"https://storage.googleapis.com/{BUCKET_NAME}/{blob_name}"
+    print(f"[GCS] Imagem pública: {url}")
+    return url
+
+
 def upload_imagem_publica(local_path: str | Path, blob_name: str, expiracao_horas: int = 1) -> str:
     """
     Faz upload de uma imagem (PNG/JPEG) para o GCS e retorna uma URL assinada.
