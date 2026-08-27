@@ -249,6 +249,50 @@ print(f'DD publicado: {media_id}')
 
 ---
 
+## APIs e credenciais utilizadas
+
+### Variáveis de ambiente (`.env`)
+
+| Variável | Serviço | Uso |
+|---|---|---|
+| `GEMINI_API_KEY` | Google Gemini | Geração de texto (LLM) e imagens IA (`gemini-2.5-flash-image`) |
+| `MONGODB_URI` | MongoDB Atlas | Banco principal — conteúdos, empresas, agenda, credenciais Instagram |
+| `GCS_BUCKET_NAME` | Google Cloud Storage | Upload de imagens para publicação no Instagram (padrão: `bob-videos-487590427215`) |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot API | Envio de mensagens e links para aprovação |
+| `TELEGRAM_CHAT_ID` | Telegram Bot API | ID do chat que recebe as notificações |
+| `LINKEDIN_ACCESS_TOKEN` | LinkedIn API | Publicação de posts no LinkedIn (Tecnosolve) |
+| `LINKEDIN_ORG_ID` | LinkedIn API | ID da organização no LinkedIn |
+| `TIKTOK_ACCESS_TOKEN` | TikTok API | Publicação de vídeos no TikTok (não usado nos posts de carrossel) |
+
+### Arquivos de credencial (em `config/`, não versionados)
+
+| Arquivo | Serviço | Uso |
+|---|---|---|
+| `config/service_account.json` | Google Cloud (Service Account) | Drive API (upload/atualização de arquivos), GCS |
+| `config/oauth_client.json` | Google Cloud (OAuth Desktop) | Autenticação interativa para Drive (geração inicial do token) |
+| `config/drive_token.json` | Google Drive OAuth | Token de acesso gerado pelo fluxo OAuth (auto-renovado) |
+| `config/youtube_token.json` | YouTube / Google OAuth | Upload de vídeos para YouTube Shorts; token OAuth com refresh |
+| `config/facebook_doisbe.json` | Meta / Facebook | `page_id`, `page_access_token`, `app_id`, `app_secret` para publicação no Facebook |
+| `config/linkedin_token.json` | LinkedIn OAuth | `access_token` + `org_id` (alternativa ao env var, persistência local) |
+
+### Credenciais no MongoDB (por empresa)
+
+Armazenadas no documento da empresa em `col_empresas`:
+
+| Campo (dentro de `instagram`) | Serviço | Obtido via |
+|---|---|---|
+| `ig_user_id` | Instagram Graph API | Meta Business Suite |
+| `access_token` | Instagram Graph API | Token de longa duração gerado via Meta |
+
+Campos extras por empresa (quando aplicável):
+- `webflow_api_token` + `webflow_collection_id` — publicação de blog no Webflow (Tecnosolve)
+
+### Google Cloud — Application Default Credentials (ADC)
+
+O módulo `cloud_storage.py` aceita tanto `service_account.json` (via `Client.from_service_account_json`) quanto ADC padrão do ambiente (`GOOGLE_APPLICATION_CREDENTIALS` ou `gcloud auth application-default login`).
+
+---
+
 ## Armadilhas conhecidas
 
 | Problema | Causa | Fix |
