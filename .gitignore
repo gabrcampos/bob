@@ -15,3 +15,9 @@ config/historico/
 SPEC_*.md
 config/assets/image.png
 public/*.mp3
+config/facebook_doisbe.json
+config/linkedin_token.json
+config/telegram_offset.json
+config/doisbe_estado.json
+cookies.txt
+logs/
