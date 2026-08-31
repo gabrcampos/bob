@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-GRAPH_URL = "https://graph.instagram.com/v21.0"
+GRAPH_URL = "https://graph.facebook.com/v21.0"
 
 
 def _post(endpoint: str, data: dict) -> dict:
@@ -29,9 +29,9 @@ def _get(endpoint: str, params: dict) -> dict:
     return result
 
 
-def _criar_container_item(image_url: str, access_token: str) -> str:
+def _criar_container_item(image_url: str, access_token: str, ig_user_id: str) -> str:
     """Cria container para um slide do carrossel. Retorna creation_id."""
-    result = _post("me/media", {
+    result = _post(f"{ig_user_id}/media", {
         "image_url": image_url,
         "is_carousel_item": "true",
         "access_token": access_token,
@@ -39,8 +39,8 @@ def _criar_container_item(image_url: str, access_token: str) -> str:
     return result["id"]
 
 
-def _criar_container_carrossel(item_ids: list[str], caption: str, access_token: str) -> str:
-    result = _post("me/media", {
+def _criar_container_carrossel(item_ids: list[str], caption: str, access_token: str, ig_user_id: str) -> str:
+    result = _post(f"{ig_user_id}/media", {
         "media_type": "CAROUSEL",
         "children": ",".join(item_ids),
         "caption": caption,
@@ -49,8 +49,8 @@ def _criar_container_carrossel(item_ids: list[str], caption: str, access_token: 
     return result["id"]
 
 
-def _publicar_container(creation_id: str, access_token: str) -> str:
-    result = _post("me/media_publish", {
+def _publicar_container(creation_id: str, access_token: str, ig_user_id: str) -> str:
+    result = _post(f"{ig_user_id}/media_publish", {
         "creation_id": creation_id,
         "access_token": access_token,
     })
@@ -87,32 +87,39 @@ def publicar_carrossel_instagram(
     access_token: str,
     empresa_id: str,
     stem: str,
-    ig_user_id: str = "",  # mantido por compatibilidade, não usado na nova API
+    ig_user_id: str = "",
 ) -> str:
     """
-    Publica um carrossel de imagens no Instagram via nova Business API.
+    Publica um carrossel de imagens no Instagram via Graph API (System User token).
     Retorna o media_id do post publicado.
     """
+    if not ig_user_id:
+        from modulos.db import buscar_credencial_instagram
+        cred = buscar_credencial_instagram(empresa_id)
+        ig_user_id = cred.get("ig_user_id", "")
+    if not ig_user_id:
+        raise ValueError(f"ig_user_id não encontrado para {empresa_id}")
+
     print(f"[Instagram] Fazendo upload de {len(imagens)} imagens para GCS...")
     image_urls = upload_imagens_para_gcs(imagens, empresa_id, stem)
 
     print("[Instagram] Criando containers de item...")
     item_ids = []
     for i, url in enumerate(image_urls):
-        cid = _criar_container_item(url, access_token)
+        cid = _criar_container_item(url, access_token, ig_user_id)
         print(f"  Slide {i+1}: container_id={cid}")
         item_ids.append(cid)
         time.sleep(1)
 
     print("[Instagram] Criando container do carrossel...")
-    carousel_id = _criar_container_carrossel(item_ids, caption, access_token)
+    carousel_id = _criar_container_carrossel(item_ids, caption, access_token, ig_user_id)
     print(f"  carousel_id={carousel_id}")
 
     print("[Instagram] Aguardando container ficar pronto...")
     _aguardar_pronto(carousel_id, access_token)
 
     print("[Instagram] Publicando...")
-    media_id = _publicar_container(carousel_id, access_token)
+    media_id = _publicar_container(carousel_id, access_token, ig_user_id)
     print(f"[Instagram] Publicado: media_id={media_id}")
     return media_id
 
